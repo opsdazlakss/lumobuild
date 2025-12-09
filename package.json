@@ -19,8 +19,10 @@
     "date-fns": "^4.1.0",
     "emoji-picker-react": "^4.16.1",
     "firebase": "^12.6.0",
+    "peerjs": "^1.5.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-draggable": "^4.5.0",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.10.0",
     "simple-peer": "^9.11.1",
@@ -46,7 +48,11 @@
     "mac": {
       "target": "dmg",
       "icon": "public/lumo-logo.png",
-      "category": "public.app-category.social-networking"
+      "category": "public.app-category.social-networking",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Lumo needs access to your camera for video calls.",
+        "NSMicrophoneUsageDescription": "Lumo needs access to your microphone for voice and video calls."
+      }
     },
     "linux": {
       "target": "AppImage",

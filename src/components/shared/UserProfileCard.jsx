@@ -1,5 +1,8 @@
 import { Modal } from './Modal';
 import { cn } from '../../utils/helpers';
+import { useCall } from '../../context/CallContext';
+import { useAuth } from '../../context/AuthContext';
+import { MdPhone, MdVideocam } from 'react-icons/md';
 
 export const UserProfileCard = ({ user, isOpen, onClose }) => {
   if (!user) return null;
@@ -12,6 +15,8 @@ export const UserProfileCard = ({ user, isOpen, onClose }) => {
     };
     return colors[role] || '#80848e';
   };
+
+  const { startCall } = useCall();
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="" size="sm">
@@ -84,6 +89,26 @@ export const UserProfileCard = ({ user, isOpen, onClose }) => {
               <span className="text-lg">{user.status.emoji}</span>
               <span className="text-sm text-dark-text">{user.status.text}</span>
             </div>
+          )}
+
+          {/* Call Actions */}
+          {user.id !== useAuth().currentUser?.uid && (
+              <div className="flex gap-2 justify-center mt-4">
+                 <button 
+                   onClick={() => startCall(user, 'voice')}
+                   className="p-2 rounded-full bg-dark-hover hover:bg-dark-sidebar transition-colors text-dark-text"
+                   title="Voice Call"
+                 >
+                    <MdPhone size={20} />
+                 </button>
+                 <button 
+                   onClick={() => startCall(user, 'video')}
+                   className="p-2 rounded-full bg-dark-hover hover:bg-dark-sidebar transition-colors text-dark-text"
+                   title="Video Call"
+                 >
+                    <MdVideocam size={20} />
+                 </button>
+              </div>
           )}
         </div>
 

@@ -70,31 +70,37 @@ export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCre
         <div className="w-8 h-0.5 bg-dark-hover my-1" />
 
         {/* Add Server Button */}
-        <div className="relative">
+        <div className="relative pb-2">
           <button
-            onClick={() => setShowMenu(!showMenu)}
+            id="add-server-btn"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              document.documentElement.style.setProperty('--btn-top', `${rect.top}px`);
+              setShowMenu(!showMenu);
+            }}
             className="w-12 h-12 rounded-2xl bg-dark-sidebar text-green-500 flex items-center justify-center hover:bg-green-500 hover:text-white hover:rounded-xl transition-all duration-200"
             title="Add Server"
           >
             <MdAdd size={28} />
           </button>
 
-          {/* Dropdown Menu */}
+          {/* Dropdown Menu - Fixed Position to escape overflow */}
           {showMenu && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute left-full ml-2 top-0 bg-dark-sidebar border border-dark-hover rounded-lg shadow-lg py-2 z-20 w-48">
-                {userRole === 'admin' && (
-                  <button
-                    onClick={() => {
-                      onCreateServer();
-                      setShowMenu(false);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-dark-text hover:bg-dark-hover transition-colors"
-                  >
-                    Create Server
-                  </button>
-                )}
+              <div className="fixed inset-0 z-50" onClick={() => setShowMenu(false)} />
+              <div 
+                className="fixed left-[80px] bg-dark-sidebar border border-dark-hover rounded-lg shadow-lg py-2 z-50 w-48"
+                style={{ top: 'var(--btn-top)' }}
+              >
+                <button
+                  onClick={() => {
+                    onCreateServer();
+                    setShowMenu(false);
+                  }}
+                  className="w-full px-4 py-2 text-left text-sm text-dark-text hover:bg-dark-hover transition-colors"
+                >
+                  Create Server
+                </button>
                 <button
                   onClick={() => {
                     onJoinServer();

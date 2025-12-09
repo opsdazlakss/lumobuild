@@ -26,89 +26,154 @@ export const DataProvider = ({ children }) => {
 
   // Load server members with batched fetching (optimized for quota)
   useEffect(() => {
+    // Reset users immediately when switching servers to prevent duplication
+    setUsers([]);
+
     if (!currentServer) {
-      setUsers([]);
       return;
     }
 
     let intervalId;
     let presenceUnsubscribes = [];
 
-    const fetchUsers = async () => {
-      try {
-        // Fetch member list
-        const membersRef = collection(db, 'servers', currentServer, 'members');
-        const membersSnapshot = await getDocs(membersRef);
-        
-        const memberIds = [];
-        const memberRoles = new Map();
-        
-        membersSnapshot.forEach((doc) => {
-          const userId = doc.data().userId;
-          memberIds.push(userId);
-          memberRoles.set(userId, doc.data().role || 'member');
+    // Real-time listener for server members
+    // This allows us to detect new members immediately without re-fetching everyone
+    const membersUnsub = onSnapshot(
+      collection(db, 'servers', currentServer, 'members'),
+      async (snapshot) => {
+        // Handle changes efficiently
+        const newMemberIds = [];
+        const removedMemberIds = [];
+        const updatedRoles = new Map();
+
+        snapshot.docChanges().forEach((change) => {
+          const memberData = change.doc.data();
+          if (change.type === 'added') {
+            newMemberIds.push(memberData.userId);
+            updatedRoles.set(memberData.userId, memberData.role);
+          }
+          if (change.type === 'removed') {
+            removedMemberIds.push(memberData.userId);
+          }
+          if (change.type === 'modified') {
+             // For role updates, we just update the local state without fetching user doc
+             updatedRoles.set(memberData.userId, memberData.role);
+          }
         });
 
-        if (memberIds.length === 0) {
-          setUsers([]);
+        // If this is the initial load (from scratch)
+        if (users.length === 0 && newMemberIds.length > 0) {
+           // Fetch all initial users in batches
+           const initialMemberRoles = new Map();
+           snapshot.docs.forEach(doc => {
+             initialMemberRoles.set(doc.data().userId, doc.data().role || 'member');
+           });
+           
+           const allMemberIds = Array.from(initialMemberRoles.keys());
+           const newUsersData = [];
+           
+           for (let i = 0; i < allMemberIds.length; i += 10) {
+            const batch = allMemberIds.slice(i, i + 10);
+            const usersQuery = query(
+              collection(db, 'users'),
+              where('__name__', 'in', batch)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            usersSnapshot.forEach((userDoc) => {
+              newUsersData.push({
+                id: userDoc.id,
+                ...userDoc.data(),
+                serverRole: initialMemberRoles.get(userDoc.id)
+              });
+            });
+          }
+          setUsers(newUsersData);
           return;
         }
 
-        // Batch fetch users (Firestore 'in' query supports max 10 items)
-        const usersData = [];
-        for (let i = 0; i < memberIds.length; i += 10) {
-          const batch = memberIds.slice(i, i + 10);
-          const usersQuery = query(
-            collection(db, 'users'),
-            where('__name__', 'in', batch)
-          );
-          const usersSnapshot = await getDocs(usersQuery);
-          
-          usersSnapshot.forEach((userDoc) => {
-            usersData.push({
-              id: userDoc.id,
-              ...userDoc.data(),
-              serverRole: memberRoles.get(userDoc.id) || 'member'
+        // Handle incremental updates (New member joined)
+        if (newMemberIds.length > 0 && users.length > 0) {
+           // Only fetch the NEW users
+           const newUsersData = [];
+           for (let i = 0; i < newMemberIds.length; i += 10) {
+            const batch = newMemberIds.slice(i, i + 10);
+            const usersQuery = query(
+              collection(db, 'users'),
+              where('__name__', 'in', batch)
+            );
+            const usersSnapshot = await getDocs(usersQuery);
+            usersSnapshot.forEach((userDoc) => {
+              newUsersData.push({
+                id: userDoc.id,
+                ...userDoc.data(),
+                serverRole: updatedRoles.get(userDoc.id)
+              });
             });
-          });
+          }
+          setUsers(prev => [...prev, ...newUsersData]);
+        }
+        
+        // Handle removed members
+        if (removedMemberIds.length > 0) {
+          setUsers(prev => prev.filter(u => !removedMemberIds.includes(u.id)));
         }
 
-        setUsers(usersData);
+        // Handle role updates
+        if (snapshot.docChanges().some(c => c.type === 'modified')) {
+           setUsers(prev => prev.map(u => {
+             if (updatedRoles.has(u.id)) {
+               return { ...u, serverRole: updatedRoles.get(u.id) };
+             }
+             return u;
+           }));
+        }
+      }
+    );
 
-        // Setup lightweight presence-only listeners for real-time status updates
-        // Clear old listeners first
-        presenceUnsubscribes.forEach(unsub => unsub());
-        presenceUnsubscribes = [];
+    // Setup lightweight presence-only listeners for real-time status updates OFFLINE/ONLINE
+    // Listen for Online users (Single query)
+    const onlineUsersQuery = query(
+      collection(db, 'users'),
+      where('servers', 'array-contains', currentServer),
+      where('isOnline', '==', true)
+    );
 
-        memberIds.forEach((userId) => {
-          const unsub = onSnapshot(doc(db, 'users', userId), (userDoc) => {
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              // Only update presence field to minimize re-renders
-              setUsers(prev => prev.map(user => 
-                user.id === userId 
-                  ? { ...user, presence: userData.presence }
-                  : user
-              ));
-            }
+    const presenceUnsub = onSnapshot(onlineUsersQuery, (snapshot) => {
+      setUsers(prevUsers => {
+        const onlineDataMap = new Map();
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          onlineDataMap.set(doc.id, {
+            presence: data.presence,
+            isOnline: data.isOnline,
+            status: data.status,
+            lastSeen: data.lastSeen
           });
-          presenceUnsubscribes.push(unsub);
         });
 
-      } catch (error) {
-        console.error('Error fetching users:', error);
-      }
-    };
-
-    // Initial fetch
-    fetchUsers();
-
-    // Refresh every 60 seconds (for profile changes like displayName, photo)
-    intervalId = setInterval(fetchUsers, 60000);
+        // Map over existing users in state and update their presence info
+        return prevUsers.map(user => {
+          const onlineData = onlineDataMap.get(user.id);
+          if (onlineData) {
+             return { ...user, ...onlineData };
+          } else {
+             // If not in the online query snapshot, set them as offline
+             // But keep their profile data!
+             return { 
+               ...user, 
+               isOnline: false, 
+               presence: 'offline',
+               status: null 
+             };
+          }
+        });
+      });
+    });
 
     return () => {
       if (intervalId) clearInterval(intervalId);
-      presenceUnsubscribes.forEach(unsub => unsub());
+      membersUnsub();
+      presenceUnsub();
     };
   }, [currentServer]);
 

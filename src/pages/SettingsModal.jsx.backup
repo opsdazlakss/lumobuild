@@ -1,0 +1,223 @@
+import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { Modal } from '../components/shared/Modal';
+import { Button } from '../components/shared/Button';
+import { Input } from '../components/shared/Input';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../services/firebase';
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { MdAdminPanelSettings } from 'react-icons/md';
+
+export const SettingsModal = ({ isOpen, onClose, onOpenAdmin }) => {
+  const { currentUser, userProfile } = useAuth();
+  const { success, error } = useToast();
+  const [photoUrl, setPhotoUrl] = useState(userProfile?.photoUrl || '');
+  const [bio, setBio] = useState(userProfile?.bio || '');
+  const [updating, setUpdating] = useState(false);
+  
+  // Password change states
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleUpdatePhoto = async () => {
+    if (!currentUser) return;
+    
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        photoUrl: photoUrl.trim(),
+      });
+      success('Profile photo updated successfully');
+    } catch (err) {
+      console.error('Error updating photo:', err);
+      error('Failed to update profile photo');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleUpdateBio = async () => {
+    if (!currentUser) return;
+    
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        bio: bio.trim(),
+      });
+      success('Bio updated successfully');
+    } catch (err) {
+      console.error('Error updating bio:', err);
+      error('Failed to update bio');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentUser || !currentUser.email) return;
+
+    // Validation
+    if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      error('Please fill in all password fields');
+      return;
+    }
+
+    if (passwordData.newPassword.length < 6) {
+      error('New password must be at least 6 characters');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      error('New passwords do not match');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      // Re-authenticate user with current password
+      const credential = EmailAuthProvider.credential(
+        currentUser.email,
+        passwordData.currentPassword
+      );
+      await reauthenticateWithCredential(currentUser, credential);
+
+      // Update password
+      await updatePassword(currentUser, passwordData.newPassword);
+      
+      success('Password changed successfully');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      console.error('Error changing password:', err);
+      if (err.code === 'auth/wrong-password') {
+        error('Current password is incorrect');
+      } else if (err.code === 'auth/weak-password') {
+        error('New password is too weak');
+      } else {
+        error('Failed to change password');
+      }
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Settings" size="md">
+      <div className="space-y-6">
+        {/* Profile Photo */}
+        <div>
+          <h3 className="text-lg font-semibold text-dark-text mb-4">Profile Photo</h3>
+          <div className="flex items-center gap-4 mb-4">
+            {photoUrl ? (
+              <img 
+                src={photoUrl} 
+                alt="Profile preview"
+                className="w-20 h-20 rounded-full object-cover"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+              />
+            ) : null}
+            <div 
+              className="w-20 h-20 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-2xl"
+              style={{ display: photoUrl ? 'none' : 'flex' }}
+            >
+            maxLength={190}
+            rows={4}
+            className="w-full bg-dark-input text-dark-text px-4 py-3 rounded-lg
+                       border border-transparent focus:border-brand-primary
+                       outline-none transition-colors duration-200
+                       placeholder:text-dark-muted resize-none"
+          />
+          <div className="flex justify-between items-center mt-2">
+            <span className="text-xs text-dark-muted">{bio.length}/190 characters</span>
+            <Button
+              variant="primary"
+              onClick={handleUpdateBio}
+              disabled={updating || bio === userProfile?.bio}
+            >
+              {updating ? 'Updating...' : 'Update Bio'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Password Change */}
+        <div>
+          <h3 className="text-lg font-semibold text-dark-text mb-4">Change Password</h3>
+          <div className="space-y-3">
+            <Input
+              label="Current Password"
+              type="password"
+              placeholder="Enter current password"
+              value={passwordData.currentPassword}
+              onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+            />
+            <Input
+              label="New Password"
+              type="password"
+              placeholder="Enter new password (min 6 characters)"
+              value={passwordData.newPassword}
+              onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+            />
+            <Input
+              label="Confirm New Password"
+              type="password"
+              placeholder="Confirm new password"
+              value={passwordData.confirmPassword}
+              onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+            />
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={handleChangePassword}
+              disabled={changingPassword || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+            >
+              {changingPassword ? 'Changing Password...' : 'Change Password'}
+            </Button>
+          </div>
+        </div>
+
+        {/* User Info */}
+        <div className="bg-dark-bg p-4 rounded-lg">
+          <h3 className="font-semibold text-dark-text mb-3">Account Information</h3>
+          <div className="space-y-2">
+            <div>
+              <div className="text-sm text-dark-muted">Display Name</div>
+              <div className="text-dark-text">{userProfile?.displayName || 'Unknown'}</div>
+            </div>
+            <div>
+              <div className="text-sm text-dark-muted">Email</div>
+              <div className="text-dark-text">{currentUser?.email}</div>
+            </div>
+            <div>
+              <div className="text-sm text-dark-muted">Role</div>
+              <div className="text-dark-text capitalize">{userProfile?.role || 'member'}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Admin Panel Access */}
+        {userProfile?.role === 'admin' && (
+          <div>
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={() => {
+                onClose();
+                onOpenAdmin();
+              }}
+            >
+              <MdAdminPanelSettings size={20} className="mr-2" />
+              Open Admin Panel
+            </Button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};

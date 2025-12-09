@@ -1,0 +1,504 @@
+import { useEffect, useState, useRef } from 'react';
+import { collection, query, orderBy, onSnapshot, limit, deleteDoc, doc, addDoc, serverTimestamp, updateDoc, setDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { formatTimestamp, getRoleBadgeColor } from '../../utils/helpers';
+import { cn } from '../../utils/helpers';
+import { useToast } from '../../context/ToastContext';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
+import { LinkConfirmDialog } from '../shared/LinkConfirmDialog';
+import { UserProfileCard } from '../shared/UserProfileCard';
+import { TypingIndicator } from './TypingIndicator';
+import { ReactionPicker } from './ReactionPicker';
+import { MdDelete, MdEdit, MdCheck, MdClose, MdMoreVert, MdReply, MdAddReaction } from 'react-icons/md';
+import { playNotificationSound, isMentioned } from '../../utils/notificationSound';
+import { MarkdownText } from '../../utils/markdown';
+
+export const MessageList = ({ channelId, users, currentUserId, userRole, onReply, onMessagesChange }) => {
+  const [messages, setMessages] = useState([]);
+  const [typingUsers, setTypingUsers] = useState([]);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [linkConfirm, setLinkConfirm] = useState(null);
+  const [selectedUserProfile, setSelectedUserProfile] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [openMenu, setOpenMenu] = useState(null);
+  const [showReactionPicker, setShowReactionPicker] = useState(null);
+  const messagesEndRef = useRef(null);
+  const lastMessageCountRef = useRef(0);
+  const { success, error } = useToast();
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Listen to messages - OPTIMIZED: reduced limit to save reads
+  useEffect(() => {
+    if (!channelId) return;
+
+    const q = query(
+      collection(db, 'channels', channelId, 'messages'),
+      orderBy('timestamp', 'asc'),
+      limit(50) // Reduced from 100 to 50 to save quota
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const messagesData = [];
+      snapshot.forEach((doc) => {
+        messagesData.push({ id: doc.id, ...doc.data() });
+      });
+      
+      // Check for new mentions and replies, play sound
+      if (messagesData.length > lastMessageCountRef.current && currentUserId) {
+        const currentUser = users.find(u => u.id === currentUserId);
+        if (currentUser?.displayName) {
+          // Check only the newest messages
+          const newMessages = messagesData.slice(lastMessageCountRef.current);
+          
+          // Check for mentions
+          const hasMention = newMessages.some(msg => 
+            msg.userId !== currentUserId && isMentioned(msg.text, currentUser.displayName)
+          );
+          
+          // Check for replies to user's messages
+          const hasReply = newMessages.some(msg => {
+            const isReply = msg.userId !== currentUserId && msg.replyTo?.userId === currentUserId;
+            if (isReply) {
+              console.log('Reply notification:', msg);
+            }
+            return isReply;
+          });
+          
+          if (hasMention || hasReply) {
+            console.log('Playing notification sound - mention:', hasMention, 'reply:', hasReply);
+            playNotificationSound();
+          }
+        }
+      }
+      
+      lastMessageCountRef.current = messagesData.length;
+      setMessages(messagesData);
+      onMessagesChange && onMessagesChange(messagesData); // Pass to parent
+      setTimeout(scrollToBottom, 100);
+    });
+
+    return unsubscribe;
+  }, [channelId, currentUserId, users, onMessagesChange]);
+
+  // Listen to typing indicators
+  useEffect(() => {
+    if (!channelId) return;
+
+    const typingRef = collection(db, 'channels', channelId, 'typing');
+    const unsubscribe = onSnapshot(typingRef, (snapshot) => {
+      const typing = [];
+      snapshot.forEach((doc) => {
+        typing.push(doc.data());
+      });
+      setTypingUsers(typing);
+    });
+
+    return unsubscribe;
+  }, [channelId]);
+
+  const getUserById = (userId) => {
+    return users.find((u) => u.id === userId) || { displayName: 'Unknown', role: 'member' };
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!deleteConfirm) return;
+
+    try {
+      const user = getUserById(deleteConfirm.userId);
+      
+      // Log the deletion to admin logs
+      await addDoc(collection(db, 'adminLogs'), {
+        type: 'message_delete',
+        channelId: channelId,
+        messageText: deleteConfirm.text,
+        deletedBy: currentUserId,
+        originalAuthor: deleteConfirm.userId,
+        originalAuthorName: user.displayName,
+        timestamp: serverTimestamp(),
+      });
+
+      // Delete the message
+      await deleteDoc(doc(db, 'channels', channelId, 'messages', deleteConfirm.id));
+      success('Message deleted successfully');
+    } catch (err) {
+      console.error('Error deleting message:', err);
+      error('Failed to delete message');
+    }
+  };
+
+  const canDeleteMessage = (messageUserId) => {
+    return currentUserId === messageUserId || userRole === 'admin';
+  };
+
+  const canEditMessage = (message) => {
+    if (message.userId !== currentUserId) return false;
+    
+    // If no timestamp yet (new message), allow editing
+    if (!message.timestamp) return true;
+    
+    // Check if message is within 15 minutes
+    const messageTime = message.timestamp.seconds * 1000;
+    const now = Date.now();
+    const fifteenMinutes = 15 * 60 * 1000;
+    
+    return (now - messageTime) < fifteenMinutes;
+  };
+
+  const handleStartEdit = (message) => {
+    setEditingMessage(message.id);
+    setEditText(message.text);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setEditText('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMessage) return;
+    
+    if (!editText.trim()) {
+      error('Message cannot be empty');
+      return;
+    }
+
+    const messageId = editingMessage;
+    const newText = editText.trim();
+    
+    // Get original message for logging
+    const originalMessage = messages.find(m => m.id === messageId);
+    const originalText = originalMessage?.text || '';
+    
+    // Exit edit mode immediately
+    setEditingMessage(null);
+    setEditText('');
+
+    try {
+      // Update message
+      await updateDoc(doc(db, 'channels', channelId, 'messages', messageId), {
+        text: newText,
+        edited: true,
+        editedAt: serverTimestamp(),
+      });
+      
+      // Log edit to admin logs
+      await addDoc(collection(db, 'adminLogs'), {
+        type: 'message_edit',
+        channelId: channelId,
+        messageId: messageId,
+        userId: currentUserId,
+        originalText: originalText,
+        newText: newText,
+        timestamp: serverTimestamp(),
+      });
+      
+      success('Message updated successfully');
+    } catch (err) {
+      console.error('Error editing message:', err);
+      if (err.code === 'resource-exhausted') {
+        error('Quota exceeded. Please try again tomorrow.');
+      } else {
+        error('Failed to edit message');
+      }
+    }
+  };
+
+  const renderMessageWithMentions = (text) => {
+    if (!text) return null;
+    
+    // Get all valid usernames and roles
+    const validUsernames = users.map(u => u.displayName.toLowerCase());
+    validUsernames.push('everyone');
+    
+    const validRoles = ['admin', 'moderator', 'member'];
+    
+    // Combined regex for mentions and URLs
+    const mentionRegex = /@(\w+)/g;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    
+    // Create array of all matches with their positions
+    const allMatches = [];
+    
+    let match;
+    while ((match = mentionRegex.exec(text)) !== null) {
+      allMatches.push({
+        type: 'mention',
+        index: match.index,
+        length: match[0].length,
+        value: match[1],
+        fullMatch: match[0]
+      });
+    }
+    
+    while ((match = urlRegex.exec(text)) !== null) {
+      allMatches.push({
+        type: 'url',
+        index: match.index,
+        length: match[0].length,
+        value: match[1],
+        fullMatch: match[0]
+      });
+    }
+    
+    // Sort by position
+    allMatches.sort((a, b) => a.index - b.index);
+    
+    const parts = [];
+    let lastIndex = 0;
+    
+    allMatches.forEach((item, idx) => {
+      // Add text before this match
+      if (item.index > lastIndex) {
+        parts.push(text.slice(lastIndex, item.index));
+      }
+      
+      if (item.type === 'mention') {
+        const mentionName = item.value;
+        const isValidUser = validUsernames.includes(mentionName.toLowerCase());
+        const isValidRole = validRoles.includes(mentionName.toLowerCase());
+        
+        if (isValidUser || isValidRole) {
+          const isMentioned = 
+            mentionName.toLowerCase() === 'everyone' || 
+            mentionName.toLowerCase() === users.find(u => u.id === currentUserId)?.displayName?.toLowerCase() ||
+            mentionName.toLowerCase() === users.find(u => u.id === currentUserId)?.role?.toLowerCase();
+          
+          parts.push(
+            <span
+              key={`mention-${idx}`}
+              className={cn(
+                'px-1 rounded font-medium',
+                isMentioned 
+                  ? 'bg-brand-primary/20 text-brand-primary' 
+                  : 'bg-blue-500/20 text-blue-400'
+              )}
+            >
+              {item.fullMatch}
+            </span>
+          );
+        } else {
+          parts.push(item.fullMatch);
+        }
+      } else if (item.type === 'url') {
+        parts.push(
+          <a
+            key={`url-${idx}`}
+            href={item.value}
+            onClick={(e) => {
+              e.preventDefault();
+              handleLinkClick(item.value);
+            }}
+            className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+            rel="noopener noreferrer"
+          >
+            {item.value}
+          </a>
+        );
+      }
+      
+      lastIndex = item.index + item.length;
+    });
+    
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+    
+    return parts.length > 0 ? parts : text;
+  };
+
+  const handleLinkClick = (url) => {
+    const dontAskAgain = localStorage.getItem('dontAskExternalLinks') === 'true';
+    
+    if (dontAskAgain) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      setLinkConfirm({ url });
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      {messages.length === 0 ? (
+        <div className="text-center text-dark-muted py-8">
+          No messages yet. Start the conversation!
+        </div>
+      ) : (
+        messages.map((message) => {
+          const user = getUserById(message.userId);
+          return (
+            <div key={message.id} className="flex gap-3 hover:bg-dark-hover/30 px-2 py-1 rounded group">
+              {user.photoUrl ? (
+                <img 
+                  src={user.photoUrl} 
+                  alt={user.displayName}
+                  onClick={() => setSelectedUserProfile(user)}
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div 
+                onClick={() => setSelectedUserProfile(user)}
+                className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center text-white font-semibold flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ display: user.photoUrl ? 'none' : 'flex' }}
+                    {user.role?.charAt(0).toUpperCase() + user.role?.slice(1)}
+                  </span>
+                  <span className="text-xs text-dark-muted">
+                    {formatTimestamp(message.timestamp)}
+                  </span>
+                  {message.edited && (
+                    <span className="text-xs text-dark-muted italic">(edited)</span>
+                  )}
+                  
+                  {/* 3-dot menu for actions - always show for Reply */}
+                  {editingMessage !== message.id && (
+                    <div className="ml-auto relative">
+                      <button
+                        onClick={() => setOpenMenu(openMenu === message.id ? null : message.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-dark-hover rounded transition-all"
+                        title="More options"
+                      >
+                        <MdMoreVert size={18} className="text-dark-muted" />
+                      </button>
+                      
+                      {openMenu === message.id && (
+                        <>
+                          {/* Backdrop to close menu */}
+                          <div 
+                            className="fixed inset-0 z-10" 
+                            onClick={() => setOpenMenu(null)}
+                          />
+                          
+                          {/* Dropdown menu */}
+                          <div className="absolute right-0 top-full mt-1 bg-dark-sidebar border border-dark-hover rounded-lg shadow-lg py-1 z-20 min-w-[120px]">
+                            {/* Reply option - always available */}
+                            <button
+                              onClick={() => {
+                                onReply && onReply(message);
+                                setOpenMenu(null);
+                              }}
+                              className="w-full px-3 py-2 text-left text-sm text-dark-text hover:bg-dark-hover flex items-center gap-2"
+                            >
+                              <MdReply size={16} className="text-green-400" />
+                              Reply
+                            </button>
+                            
+                            {canEditMessage(message) && (
+                              <button
+                                onClick={() => {
+                                  handleStartEdit(message);
+                                  setOpenMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-dark-text hover:bg-dark-hover flex items-center gap-2"
+                              >
+                                <MdEdit size={16} className="text-blue-400" />
+                                Edit
+                              </button>
+                            )}
+                            {canDeleteMessage(message.userId) && (
+                              <button
+                                onClick={() => {
+                                  setDeleteConfirm({ id: message.id, text: message.text, userId: message.userId });
+                                  setOpenMenu(null);
+                                }}
+                                className="w-full px-3 py-2 text-left text-sm text-admin hover:bg-dark-hover flex items-center gap-2"
+                              >
+                                <MdDelete size={16} />
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {editingMessage === message.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveEdit();
+                        if (e.key === 'Escape') handleCancelEdit();
+                      }}
+                      className="flex-1 bg-dark-input text-dark-text px-3 py-1.5 rounded
+                                 border border-brand-primary outline-none"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSaveEdit}
+                      className="text-green-500 hover:text-green-400 transition-colors"
+                      title="Save (Enter)"
+                    >
+                      <MdCheck size={20} />
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="text-admin hover:text-admin/80 transition-colors"
+                      title="Cancel (Esc)"
+                    >
+                      <MdClose size={20} />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Replied Message Display */}
+                    {message.replyTo && (
+                      <div className="mb-2 ml-2 pl-3 border-l-2 border-green-400 text-sm bg-dark-sidebar/30 rounded py-1">
+                        <div className="text-xs text-green-400 font-semibold">
+                          Replying to {getUserById(message.replyTo.userId).displayName}
+                        </div>
+                        <div className="text-dark-muted italic truncate">
+                          {message.replyTo.text}
+                        </div>
+                      </div>
+                    )}
+                    <div className="text-dark-text break-words">
+                      <MarkdownText>{message.text}</MarkdownText>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+      
+      <TypingIndicator typingUsers={typingUsers} currentUserId={currentUserId} />
+      <div ref={messagesEndRef} />
+
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleDeleteMessage}
+        title="Delete Message"
+        message="Are you sure you want to delete this message? This action cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+      />
+
+      <LinkConfirmDialog
+        isOpen={!!linkConfirm}
+        onClose={() => setLinkConfirm(null)}
+        onConfirm={() => window.open(linkConfirm?.url, '_blank', 'noopener,noreferrer')}
+        url={linkConfirm?.url}
+      />
+
+      <UserProfileCard
+        user={selectedUserProfile}
+        isOpen={!!selectedUserProfile}
+        onClose={() => setSelectedUserProfile(null)}
+      />
+    </div>
+  );
+};

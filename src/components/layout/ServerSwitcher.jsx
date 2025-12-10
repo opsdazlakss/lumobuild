@@ -92,15 +92,17 @@ export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCre
                 className="fixed left-[80px] bg-dark-sidebar border border-dark-hover rounded-lg shadow-lg py-2 z-50 w-48"
                 style={{ top: 'var(--btn-top)' }}
               >
-                <button
-                  onClick={() => {
-                    onCreateServer();
-                    setShowMenu(false);
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-dark-text hover:bg-dark-hover transition-colors"
-                >
-                  Create Server
-                </button>
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => {
+                      onCreateServer();
+                      setShowMenu(false);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-dark-text hover:bg-dark-hover transition-colors"
+                  >
+                    Create Server
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     onJoinServer();

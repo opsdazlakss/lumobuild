@@ -5,7 +5,8 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   sendPasswordResetEmail,
-  onAuthStateChanged 
+  onAuthStateChanged,
+  sendEmailVerification 
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
@@ -95,6 +96,13 @@ export const AuthProvider = ({ children }) => {
   const register = async (email, password, displayName) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
+    // Send verification email
+    try {
+        await sendEmailVerification(userCredential.user);
+    } catch (e) {
+        console.error("Error sending verification email:", e);
+    }
+
     await setDoc(doc(db, 'users', userCredential.user.uid), {
       displayName: displayName,
       email: email,
@@ -129,6 +137,12 @@ export const AuthProvider = ({ children }) => {
     return sendPasswordResetEmail(auth, email);
   };
 
+  const resendVerification = () => {
+      if (currentUser) {
+          return sendEmailVerification(currentUser);
+      }
+  };
+
   const value = {
     currentUser,
     userProfile,
@@ -136,6 +150,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     resetPassword,
+    resendVerification,
   };
 
   return (

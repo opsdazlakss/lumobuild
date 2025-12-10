@@ -18,11 +18,17 @@ import { CallProvider } from '../context/CallContext';
 import { CallModal } from '../components/call/CallModal';
 import { FaHashtag } from 'react-icons/fa';
 import { MdPushPin } from 'react-icons/md';
+import { VerifyEmailScreen } from '../components/auth/VerifyEmailScreen';
+import { usePresence } from '../hooks/usePresence';
 
 export const MainApp = () => {
   const { currentUser, userProfile, logout } = useAuth();
   const { users, channels, server, servers, currentServer, setCurrentServer, unreadMentions } = useData();
+  
+  // Send presence heartbeat every 5 minutes
+  usePresence(currentUser?.uid);
   const [selectedChannel, setSelectedChannel] = useState(null);
+  // ... existing state ...
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
@@ -31,7 +37,7 @@ export const MainApp = () => {
   const [replyingTo, setReplyingTo] = useState(null);
   const [messages, setMessages] = useState([]);
 
-  // Auto-clear unread mentions when viewing a server
+  // Auto-clear unread mentions...
   useEffect(() => {
     if (!currentUser || !currentServer || !unreadMentions) return;
     
@@ -43,9 +49,9 @@ export const MainApp = () => {
         console.error('Error clearing unread mentions:', err);
       });
     }
-  }, [currentServer, currentUser, unreadMentions]); // Run when server changes OR mentions update
+  }, [currentServer, currentUser, unreadMentions]);
 
-  // Auto-select first channel when switching servers
+  // Auto-select first channel...
   useEffect(() => {
     if (channels.length > 0) {
       setSelectedChannel(channels[0]);
@@ -53,6 +59,11 @@ export const MainApp = () => {
       setSelectedChannel(null);
     }
   }, [currentServer, channels]);
+
+  // Enforce Email Verification
+  if (currentUser && !currentUser.emailVerified) {
+      return <VerifyEmailScreen />;
+  }
 
   return (
     <CallProvider>

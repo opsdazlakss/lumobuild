@@ -16,8 +16,10 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const { warning, error } = useToast();
 
   // Check if user can send messages in this channel
-  const canSendMessage = !channel?.locked || userRole === 'admin';
-  const lockMessage = "This channel is locked. Only admins can send messages.";
+  // Allow Owner, Admin and Moderator to bypass lock
+  const canRoleBypass = ['owner', 'admin', 'moderator'].includes(userRole);
+  const canSendMessage = !channel?.locked || canRoleBypass;
+  const lockMessage = "This channel is locked. Only staff can send messages.";
 
   const handleEmojiSelect = (emoji) => {
     const cursorPos = inputRef.current?.selectionStart || message.length;

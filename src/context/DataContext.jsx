@@ -147,7 +147,11 @@ export const DataProvider = ({ children }) => {
             presence: data.presence,
             isOnline: data.isOnline,
             status: data.status,
-            lastSeen: data.lastSeen
+            lastSeen: data.lastSeen,
+            // Also update profile data in real-time for online users
+            displayName: data.displayName,
+            photoUrl: data.photoUrl || data.photoURL,
+            bio: data.bio
           });
         });
 
@@ -177,11 +181,15 @@ export const DataProvider = ({ children }) => {
     };
   }, [currentServer]);
 
+  // State to track user's server IDs for the subscription effect
+  const [myServerIds, setMyServerIds] = useState([]);
+
   // Load user's servers with real-time updates
   useEffect(() => {
     if (!currentUser) {
       setServers([]);
       setCurrentServer(null);
+      setMyServerIds([]);
       return;
     }
 
@@ -193,60 +201,39 @@ export const DataProvider = ({ children }) => {
       const serverIds = userData?.servers || [];
       const mentions = userData?.unreadMentions || {};
 
-      // Update unread mentions and check for new ones
+      // Update unread mentions...
       Object.keys(mentions).forEach(serverId => {
         const oldCount = lastMentionCountRef.current[serverId] || 0;
         const newCount = mentions[serverId]?.count || 0;
         
-        // Play sound for new mentions in OTHER servers (not current)
         if (newCount > oldCount && serverId !== currentServer) {
           playNotificationSound();
         }
       });
       
-      // Update last counts
       lastMentionCountRef.current = Object.fromEntries(
         Object.entries(mentions).map(([id, data]) => [id, data.count])
       );
       
       setUnreadMentions(mentions);
 
-      if (serverIds.length === 0) {
-        setServers([]);
-        setCurrentServer(null);
-        return;
-      }
+      // Update the server IDs state to trigger the subscription effect
+      // Only update if IDs actually changed to avoid re-subscribing
+      setMyServerIds(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(serverIds)) {
+              return serverIds;
+          }
+          return prev;
+      });
 
-      // Batch fetch servers (no continuous listeners - fetch only when server list changes)
-      const fetchServers = async () => {
-        const serversData = [];
-        for (let i = 0; i < serverIds.length; i += 10) {
-          const batch = serverIds.slice(i, i + 10);
-          const serversQuery = query(
-            collection(db, 'servers'),
-            where('__name__', 'in', batch)
-          );
-          const serversSnapshot = await getDocs(serversQuery);
-          
-          serversSnapshot.forEach((serverDoc) => {
-            serversData.push({ id: serverDoc.id, ...serverDoc.data() });
-          });
-        }
-        setServers(serversData);
-      };
-
-      fetchServers();
-
-      // ONLY set current server if it's not already set or if current server is not in the list
+      // Maintain current server logic
       setCurrentServer(prev => {
         const firestoreCurrentServer = userData?.currentServer;
         
-        // If Firestore has a different currentServer (e.g., user just joined a new server), use it
         if (firestoreCurrentServer && serverIds.includes(firestoreCurrentServer) && firestoreCurrentServer !== prev) {
           return firestoreCurrentServer;
         }
         
-        // If no previous server, use lastServer or first server
         if (!prev) {
           if (firestoreCurrentServer && serverIds.includes(firestoreCurrentServer)) {
             return firestoreCurrentServer;
@@ -254,18 +241,56 @@ export const DataProvider = ({ children }) => {
           return serverIds[0];
         }
         
-        // If previous server is still in the list, keep it
         if (serverIds.includes(prev)) {
           return prev;
         }
         
-        // Previous server was removed, switch to first available
         return serverIds[0];
       });
     });
 
     return userUnsub;
   }, [currentUser]);
+
+  // Dedicated effect for subscribing to server documents
+  useEffect(() => {
+    if (myServerIds.length === 0) {
+        setServers([]);
+        return;
+    }
+
+    const unsubscribers = [];
+
+    // Batch listen to servers
+    for (let i = 0; i < myServerIds.length; i += 10) {
+        const batch = myServerIds.slice(i, i + 10);
+        const serversQuery = query(
+        collection(db, 'servers'),
+        where('__name__', 'in', batch)
+        );
+        
+        const unsub = onSnapshot(serversQuery, (snapshot) => {
+            const batchData = [];
+            snapshot.forEach((serverDoc) => {
+                batchData.push({ id: serverDoc.id, ...serverDoc.data() });
+            });
+            
+            setServers(prev => {
+                const otherServers = prev.filter(s => !batch.includes(s.id));
+                const newServers = [...otherServers, ...batchData];
+                // Sort by original ID order
+                return newServers.sort((a,b) => {
+                    return myServerIds.indexOf(a.id) - myServerIds.indexOf(b.id);
+                });
+            });
+        });
+        unsubscribers.push(unsub);
+    }
+
+    return () => {
+        unsubscribers.forEach(unsub => unsub());
+    };
+  }, [myServerIds]);
 
   // Update current server object and listen to channels
   useEffect(() => {

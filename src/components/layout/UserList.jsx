@@ -3,16 +3,18 @@ import { getRoleBadgeColor } from '../../utils/helpers';
 import { cn } from '../../utils/helpers';
 import { UserProfileCard } from '../shared/UserProfileCard';
 import { StatusIndicator, getStatusConfig } from '../shared/StatusIndicator';
+import { isUserOnline as checkUserOnline } from '../../hooks/usePresence';
 
 export const UserList = ({ users, currentUserId }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   
   
-  // Online check: use isOnline flag but treat invisible as offline
+  // Online check: use lastSeen timestamp, treat invisible as offline
   const isUserOnline = (user) => {
     // Invisible users appear offline
     if (user.presence === 'invisible') return false;
-    return user.isOnline === true;
+    // Calculate online status from lastSeen timestamp (within last 6 minutes)
+    return checkUserOnline(user.lastSeen);
   };
   
   // Separate online and offline users
@@ -61,9 +63,9 @@ export const UserList = ({ users, currentUserId }) => {
           >
             {user.displayName?.[0]?.toUpperCase() || 'U'}
           </div>
-          {/* Presence indicator */}
+          {/* Presence indicator - show offline if user is not active */}
           <div className="absolute bottom-0 right-0">
-            <StatusIndicator status={user.presence || (online ? 'online' : 'offline')} size="sm" />
+            <StatusIndicator status={online ? (user.presence || 'online') : 'offline'} size="sm" />
           </div>
         </div>
         <div className="flex-1 min-w-0">

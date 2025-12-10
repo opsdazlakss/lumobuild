@@ -4,6 +4,7 @@ import { db } from '../services/firebase';
 import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
+import { playIncomingRing, playOutgoingRing, stopRing } from '../utils/callSounds';
 
 const CallContext = createContext();
 
@@ -37,10 +38,35 @@ export const CallProvider = ({ children }) => {
   const currentCallDocIdRef = useRef(null); // Firestore document ID for signaling
   const localStreamRef = useRef(null); // Ref to access stream in callbacks
 
+  const stopRingRef = useRef(null); // Ref to hold the sound stop function
+
   // Update ref when state changes
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
+
+  // Sound Effect Logic
+  useEffect(() => {
+    // Stop any existing sound when status changes
+    if (stopRingRef.current) {
+        stopRingRef.current();
+        stopRingRef.current = null;
+    }
+    stopRing(); // Double safety
+
+    if (callStatus === 'incoming') {
+        stopRingRef.current = playIncomingRing();
+    } else if (callStatus === 'outgoing') {
+        stopRingRef.current = playOutgoingRing();
+    }
+    
+    return () => {
+        if (stopRingRef.current) {
+            stopRingRef.current();
+        }
+        stopRing();
+    };
+  }, [callStatus]);
 
   // 1. Initialize PeerJS on login
   useEffect(() => {
@@ -329,11 +355,20 @@ export const CallProvider = ({ children }) => {
 
   // 6. End Call (Both Sides)
   const endCall = async (deleteSignalDoc = true) => {
-    // 1. Close local stream
+    // 1. Close local stream - use REF to avoid stale closure issues
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log('Stopped track:', track.kind);
+      });
+    }
+    // Also check state as backup
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
-      setLocalStream(null);
     }
+    setLocalStream(null);
+    localStreamRef.current = null;
 
     // 2. Close peer connection
     if (activeCall) {

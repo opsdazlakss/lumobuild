@@ -51,7 +51,8 @@
       "category": "public.app-category.social-networking",
       "extendInfo": {
         "NSCameraUsageDescription": "Lumo needs access to your camera for video calls.",
-        "NSMicrophoneUsageDescription": "Lumo needs access to your microphone for voice and video calls."
+        "NSMicrophoneUsageDescription": "Lumo needs access to your microphone for voice and video calls.",
+        "NSScreenCaptureUsageDescription": "Lumo needs access to share your screen."
       }
     },
     "linux": {

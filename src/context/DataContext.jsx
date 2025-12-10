@@ -254,6 +254,9 @@ export const DataProvider = ({ children }) => {
 
   // Dedicated effect for subscribing to server documents
   useEffect(() => {
+    // 1. Clean up stale servers immediately
+    setServers(prev => prev.filter(s => myServerIds.includes(s.id)));
+
     if (myServerIds.length === 0) {
         setServers([]);
         return;

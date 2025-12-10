@@ -37,6 +37,7 @@ export const CallProvider = ({ children }) => {
   const remoteVideoRef = useRef(null);
   const currentCallDocIdRef = useRef(null); // Firestore document ID for signaling
   const localStreamRef = useRef(null); // Ref to access stream in callbacks
+  const activeCallRef = useRef(null); // Ref to valid active call
 
   const stopRingRef = useRef(null); // Ref to hold the sound stop function
 
@@ -44,6 +45,10 @@ export const CallProvider = ({ children }) => {
   useEffect(() => {
     localStreamRef.current = localStream;
   }, [localStream]);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
 
   // Sound Effect Logic
   useEffect(() => {
@@ -86,9 +91,21 @@ export const CallProvider = ({ children }) => {
     newPeer.on('call', (call) => {
       console.log('Receiving PeerJS call connection...');
       
+      // Handle Re-call / Upgrade (e.g. switching from Audio to Screen Share)
+      // If we are already in a call with this peer, we blindly accept the new one and drop the old one safely.
+      if (activeCallRef.current && activeCallRef.current.peer === call.peer) {
+          console.log("Replacing existing call (upgrade/renegotiation detected)");
+          // Remove all close listeners to prevent endCall() from triggering
+          if (activeCallRef.current.removeAllListeners) {
+              activeCallRef.current.removeAllListeners('close');
+          }
+          activeCallRef.current.close();
+      }
+
       // CRITICAL FIX: We MUST answer the call and provide our stream
       // Using ref because direct state might be stale in this closure
-      const stream = localStreamRef.current;
+      // If localStream was somehow killed, try to grab it from ref or even cameraStreamRef as backup
+      const stream = localStreamRef.current || (cameraStreamRef.current);
       
       if (stream) {
           console.log('Answering call with local stream');
@@ -271,6 +288,51 @@ export const CallProvider = ({ children }) => {
     }
   };
 
+  // Monitor WebRTC Connection State (Heartbeat/Resilience)
+  useEffect(() => {
+    if (!activeCall || !activeCall.peerConnection) return;
+
+    const handleConnectionStateChange = () => {
+        const connectionState = activeCall.peerConnection.connectionState;
+        const iceState = activeCall.peerConnection.iceConnectionState;
+        
+        console.log(`Connection State: ${connectionState}, ICE State: ${iceState}`);
+
+        if (iceState === 'disconnected' || iceState === 'failed' || iceState === 'closed') {
+            console.warn("Peer connection lost/failed. Ending call...");
+            // Give a small grace period for 'disconnected' to potentially recover (e.g. erratic network)
+            // But 'failed' is usually fatal.
+            if (iceState === 'failed' || iceState === 'closed') {
+                endCall();
+            } else if (iceState === 'disconnected') {
+                 // Optional: Wait 5s before ending? For now, let's keep it snappy if user wants immediate feedback.
+                 // checking activeCallRef to ensure we don't kill a NEW call if this event fires late
+                 if (activeCallRef.current === activeCall) {
+                      // Attempt to reconnect or just end? PeerJS reconnect is tricky for calls.
+                      // Let's explicitly check if we are still "connected" in logic
+                      setTimeout(() => {
+                          if (activeCallRef.current && activeCallRef.current.peerConnection.iceConnectionState === 'disconnected') {
+                              console.log("Connection still disconnected after timeout. Ending.");
+                              endCall();
+                          }
+                      }, 3000);
+                 }
+            }
+        }
+    };
+
+    activeCall.peerConnection.addEventListener('iceconnectionstatechange', handleConnectionStateChange);
+    // Also listen to connectionstatechange if available (newer browsers)
+    activeCall.peerConnection.addEventListener('connectionstatechange', handleConnectionStateChange);
+
+    return () => {
+        if (activeCall && activeCall.peerConnection) {
+            activeCall.peerConnection.removeEventListener('iceconnectionstatechange', handleConnectionStateChange);
+            activeCall.peerConnection.removeEventListener('connectionstatechange', handleConnectionStateChange);
+        }
+    };
+  }, [activeCall]);
+
   // 5. Answer Call (Callee Side)
   const answerCall = async () => {
     if (!incomingCall || !peer) return;
@@ -355,6 +417,13 @@ export const CallProvider = ({ children }) => {
 
   // 6. End Call (Both Sides)
   const endCall = async (deleteSignalDoc = true) => {
+    // 0. Stop screen share stream if active
+    if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(t => t.stop());
+        screenStreamRef.current = null;
+    }
+    cameraStreamRef.current = null;
+
     // 1. Close local stream - use REF to avoid stale closure issues
     const stream = localStreamRef.current;
     if (stream) {
@@ -429,6 +498,161 @@ export const CallProvider = ({ children }) => {
     }
   };
 
+  const screenStreamRef = useRef(null);
+  const cameraStreamRef = useRef(null); // To store camera stream when screen sharing
+
+  const toggleScreenShare = async () => {
+    // If already screen sharing -> Stop it
+    if (screenStreamRef.current) {
+        await stopScreenShare();
+        return;
+    }
+
+    // Start Screen Share
+    try {
+        console.log("Requesting display media...");
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const screenTrack = displayStream.getVideoTracks()[0];
+        setIsVideoOff(false); // Ensure UI reflects that video is ON (screen share)
+        
+        console.log("Display media obtained:", screenTrack.label);
+
+        // 1. Store current camera stream/track to revert later
+        if (localStream) {
+            cameraStreamRef.current = localStream; 
+        }
+
+        // 2. Event listener for "Stop sharing" chrome UI button
+        screenTrack.onended = () => {
+            console.log("Screen track ended by user/browser UI");
+            stopScreenShare();
+        };
+
+        screenStreamRef.current = displayStream;
+
+        // 3. Update Local Stream (Update Local UI)
+        // We create a new stream for local view combining screen video + current audio
+        // Moved up to be available for Re-call logic
+        const audioTracks = localStream ? localStream.getAudioTracks() : [];
+        const newLocalStream = new MediaStream([
+            screenTrack, 
+            ...audioTracks
+        ]);
+        setLocalStream(newLocalStream);
+
+        // 4. Update Peer Connection (Send to Remote)
+        if (activeCall && activeCall.peerConnection) {
+            const senders = activeCall.peerConnection.getSenders();
+            const sender = senders.find(s => s.track && s.track.kind === 'video');
+            
+            if (sender) {
+                console.log("Found video sender, replacing track...");
+                await sender.replaceTrack(screenTrack);
+                console.log("Track replaced successfully.");
+            } else {
+                console.log("No video sender found (Audio-only call). Renegotiating via Re-Call...");
+
+                // Fallback Strategy: Close current connection and Call again with new stream
+                // This forces PeerJS/WebRTC to negotiate a new connection with Video+Audio tracks.
+                
+                const remotePeerId = activeCall.peer;
+                const currentCall = activeCall;
+
+                if (peer && remotePeerId) {
+                    // 1. Prevent old call from triggering 'ended' logic
+                    // currentCall.off('close');
+                    // currentCall.close(); // DON'T close immediately. Let the new call replace it safely.
+                    currentCall.removeAllListeners('close'); // Just stop listening to it
+
+                    // 2. Start new call with new stream
+                    console.log("Starting new call to upgrade stream...");
+                    const newCall = peer.call(remotePeerId, newLocalStream);
+
+                    // 3. Bind events for new call
+                    newCall.on('stream', (remoteStream) => {
+                        console.log('Received remote stream (upgrade)');
+                        setRemoteStream(remoteStream);
+                    });
+                    
+                    newCall.on('close', () => {
+                        endCall();
+                    });
+
+                    newCall.on('error', (e) => {
+                        console.error('New Call error:', e);
+                        endCall(); // Or handle gracefully
+                    });
+
+                    // 4. Update State
+                    setActiveCall(newCall);
+                }
+            }
+        } else {
+             console.warn("No active peer connection to share screen with.");
+        }
+
+    } catch (err) {
+        console.error("Error starting screen share:", err);
+        showError("Failed to start screen share");
+    }
+  };
+
+  const stopScreenShare = async () => {
+    if (!screenStreamRef.current) return;
+    console.log("Stopping screen share...");
+
+    // 1. Stop screen tracks
+    screenStreamRef.current.getTracks().forEach(t => t.stop());
+    screenStreamRef.current = null;
+
+    // 2. Revert to Camera or Audio-only
+    if (cameraStreamRef.current) {
+         console.log("Reverting to previous stream state...");
+         const cameraTrack = cameraStreamRef.current.getVideoTracks()[0];
+         
+         if (activeCall && activeCall.peerConnection) {
+            const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+            
+            if (cameraTrack) {
+                // We had video before, replace back
+                if (sender) {
+                    try {
+                        await sender.replaceTrack(cameraTrack);
+                        console.log("Reverted to camera track.");
+                    } catch(e) {
+                        console.error("Failed to revert track:", e);
+                    }
+                }
+            } else {
+                // We were audio-only. Remove the video sender we added.
+                if (sender) {
+                    console.log("Reverting to audio-only, removing video sender...");
+                    activeCall.peerConnection.removeTrack(sender);
+                }
+            }
+         }
+
+          // Update Local UI
+         setLocalStream(cameraStreamRef.current);
+         cameraStreamRef.current = null;
+    } else {
+        console.log("No stored camera stream, requesting new user media...");
+        // If no camera stream was stored, try to get camera
+        try {
+            const stream = await getMediaStream(true);
+            if (stream && activeCall && activeCall.peerConnection) {
+                const videoTrack = stream.getVideoTracks()[0];
+                const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                     await sender.replaceTrack(videoTrack);
+                }
+            }
+        } catch(e) {
+             console.error("Failed to restore camera:", e);
+        }
+    }
+  };
+
   const value = {
     startCall,
     answerCall,
@@ -442,7 +666,9 @@ export const CallProvider = ({ children }) => {
     remoteStream,
     isMuted,
     isVideoOff,
-    activeCall
+    activeCall,
+    isScreenSharing: !!screenStreamRef.current,
+    toggleScreenShare
   };
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;

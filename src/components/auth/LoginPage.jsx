@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Input } from '../shared/Input';
 import { Button } from '../shared/Button';
+import { ForgotPasswordModal } from './ForgotPasswordModal';
 
 export const LoginPage = ({ onSwitchToRegister, onSwitchToReset }) => {
   const { login } = useAuth();
@@ -11,6 +12,7 @@ export const LoginPage = ({ onSwitchToRegister, onSwitchToReset }) => {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,14 +46,25 @@ export const LoginPage = ({ onSwitchToRegister, onSwitchToReset }) => {
             required
           />
 
-          <Input
-            label="Password"
-            type="password"
-            placeholder="Enter your password"
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            required
-          />
+          <div>
+            <Input
+              label="Password"
+              type="password"
+              placeholder="Enter your password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              required
+            />
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="text-sm text-brand-primary hover:underline"
+              >
+                Forgot Password?
+              </button>
+            </div>
+          </div>
 
           {error && (
             <div className="bg-admin/10 border border-admin/30 text-admin px-4 py-3 rounded-md text-sm">
@@ -81,6 +94,12 @@ export const LoginPage = ({ onSwitchToRegister, onSwitchToReset }) => {
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal 
+        isOpen={showForgotPassword} 
+        onClose={() => setShowForgotPassword(false)} 
+      />
     </div>
   );
 };

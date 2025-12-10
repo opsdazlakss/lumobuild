@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useCall } from '../../context/CallContext';
-import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff } from 'react-icons/md';
+import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdScreenShare, MdStopScreenShare } from 'react-icons/md';
 import { FaPhone } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
 import Draggable from 'react-draggable';
@@ -18,7 +18,9 @@ export const CallModal = () => {
     toggleVideo, 
     isMuted, 
     isVideoOff,
-    activeCall
+    activeCall,
+    isScreenSharing,
+    toggleScreenShare
   } = useCall();
 
   const localVideoRef = useRef(null);
@@ -126,36 +128,54 @@ export const CallModal = () => {
         )}
       </div>
 
-      {/* Controls Bar */}
+      {/* Controls Bar - Floating Overlay */}
       <div className={cn(
-          "bg-gray-900/90 backdrop-blur border-t border-gray-800 flex items-center justify-center gap-6 p-4",
-          isMinimized && "hidden"
+          "absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 p-3 bg-gray-900/80 backdrop-blur-md rounded-2xl border border-gray-700 shadow-xl transition-opacity duration-300 hover:opacity-100",
+          isMinimized && "hidden",
+          // Auto-hide controls after inaction (optional later), for now just keep bottom
       )}>
          <button 
            onClick={toggleAudio}
            className={cn(
-               "p-4 rounded-full transition-colors",
-               isMuted ? "bg-white text-black" : "bg-gray-700 text-white hover:bg-gray-600"
+               "p-3 rounded-xl transition-all hover:scale-110 active:scale-95",
+               isMuted ? "bg-red-500/20 text-red-500" : "bg-gray-700/50 text-white hover:bg-gray-600"
            )}
+           title={isMuted ? "Unmute" : "Mute"}
          >
-           {isMuted ? <MdMicOff size={24} /> : <MdMic size={24} />}
-         </button>
-
-         <button 
-           onClick={() => endCall(true)}
-           className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700 transition-colors px-8"
-         >
-           <MdCallEnd size={32} />
+           {isMuted ? <MdMicOff size={22} /> : <MdMic size={22} />}
          </button>
 
          <button 
            onClick={toggleVideo}
            className={cn(
-               "p-4 rounded-full transition-colors",
-               isVideoOff ? "bg-white text-black" : "bg-gray-700 text-white hover:bg-gray-600"
+               "p-3 rounded-xl transition-all hover:scale-110 active:scale-95",
+               isVideoOff ? "bg-red-500/20 text-red-500" : "bg-gray-700/50 text-white hover:bg-gray-600"
            )}
+           title={isVideoOff ? "Turn Video On" : "Turn Video Off"}
          >
-           {isVideoOff ? <MdVideocamOff size={24} /> : <MdVideocam size={24} />}
+           {isVideoOff ? <MdVideocamOff size={22} /> : <MdVideocam size={22} />}
+         </button>
+
+         <button 
+           onClick={toggleScreenShare}
+           disabled={!activeCall}
+           className={cn(
+               "p-3 rounded-xl transition-all hover:scale-110 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed",
+               isScreenSharing ? "bg-green-500 text-white" : "bg-gray-700/50 text-white hover:bg-gray-600"
+           )}
+           title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
+         >
+           {isScreenSharing ? <MdStopScreenShare size={22} /> : <MdScreenShare size={22} />}
+         </button>
+
+         <div className="w-px h-8 bg-gray-700 mx-2" />
+
+         <button 
+           onClick={() => endCall(true)}
+           className="p-3 rounded-xl bg-red-600 text-white hover:bg-red-700 transition-all hover:scale-110 active:scale-95 shadow-lg shadow-red-900/20"
+           title="End Call"
+         >
+           <MdCallEnd size={24} />
          </button>
       </div>
     </div>

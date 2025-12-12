@@ -53,22 +53,26 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const getMentionSuggestions = () => {
     const suggestions = [];
     
-    // Add @everyone if it matches the search
-    if ('everyone'.startsWith(mentionSearch.toLowerCase())) {
-      suggestions.push({ id: 'everyone', displayName: 'everyone', type: 'special' });
-    }
-    
-    // Add roles that match the search
-    const roles = ['admin', 'moderator', 'member'];
-    roles.forEach(role => {
-      if (role.startsWith(mentionSearch.toLowerCase())) {
-        suggestions.push({ id: `role-${role}`, displayName: role, type: 'role' });
+    // Only allow special mentions in Servers
+    if (serverId) {
+      // Add @everyone if it matches the search
+      if ('everyone'.startsWith(mentionSearch.toLowerCase())) {
+        suggestions.push({ id: 'everyone', displayName: 'everyone', type: 'special' });
       }
-    });
+      
+      // Add roles that match the search
+      const roles = ['admin', 'moderator', 'member'];
+      roles.forEach(role => {
+        if (role.startsWith(mentionSearch.toLowerCase())) {
+          suggestions.push({ id: `role-${role}`, displayName: role, type: 'role' });
+        }
+      });
+    }
     
     // Add users that match the search
     if (users) {
       const filteredUsers = users.filter(u => 
+        u.id !== userId &&
         u.displayName.toLowerCase().startsWith(mentionSearch.toLowerCase())
       );
       filteredUsers.forEach(u => {
@@ -151,7 +155,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
         }
       }
 
-      await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), {
+      const messageData = {
         text: message.trim(),
         userId: userId,
         timestamp: serverTimestamp(),
@@ -161,21 +165,39 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           userId: replyingTo.userId,
           text: replyingTo.text.substring(0, 100),
         } : null,
-      });
-      
-      // Update unread mentions for mentioned users (global notifications)
-      if (mentions.length > 0) {
-        const mentionUpdates = mentions.map(mentionedUserId =>
-          updateDoc(doc(db, 'users', mentionedUserId), {
-            [`unreadMentions.${serverId}.count`]: increment(1),
-            [`unreadMentions.${serverId}.lastMentionAt`]: serverTimestamp(),
-            [`unreadMentions.${serverId}.lastMentionText`]: message.trim().substring(0, 50)
-          }).catch(err => {
-            console.error('Error updating mention for user:', mentionedUserId, err);
-          })
-        );
+      };
+
+      if (serverId) {
+        // Server Channel Message
+        await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), messageData);
         
-        await Promise.all(mentionUpdates);
+        // Update unread mentions for mentioned users (global notifications)
+        if (mentions.length > 0) {
+          const mentionUpdates = mentions.map(mentionedUserId =>
+            updateDoc(doc(db, 'users', mentionedUserId), {
+              [`unreadMentions.${serverId}.count`]: increment(1),
+              [`unreadMentions.${serverId}.lastMentionAt`]: serverTimestamp(),
+              [`unreadMentions.${serverId}.lastMentionText`]: message.trim().substring(0, 50)
+            }).catch(err => {
+              console.error('Error updating mention for user:', mentionedUserId, err);
+            })
+          );
+          
+          await Promise.all(mentionUpdates);
+        }
+      } else {
+        // Direct Message
+        await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
+        
+        // Update DM lastMessage metadata for sidebar sorting/preview
+        await updateDoc(doc(db, 'dms', channelId), {
+          lastMessage: {
+            text: message.trim().substring(0, 100),
+            userId: userId,
+            timestamp: serverTimestamp()
+          },
+          updatedAt: serverTimestamp()
+        });
       }
       
       setMessage('');

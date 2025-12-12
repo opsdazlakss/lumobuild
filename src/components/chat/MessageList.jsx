@@ -12,6 +12,7 @@ import { playNotificationSound, isMentioned } from '../../utils/notificationSoun
 import { MarkdownText } from '../../utils/markdown.jsx';
 import { ReactionPicker } from './ReactionPicker';
 import { StatusIndicator } from '../shared/StatusIndicator';
+import { MessageLinkPreviews } from '../shared/LinkPreview';
 
 export const MessageList = ({ serverId, channelId, users, currentUserId, userRole, onReply, onMessagesChange }) => {
   const [messages, setMessages] = useState([]);
@@ -30,6 +31,12 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
   const messagesContainerRef = useRef(null);
   const lastMessageCountRef = useRef(0);
   const isInitialLoadRef = useRef(true);
+  const usersRef = useRef(users);
+
+  // Keep usersRef updated
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
   const { success, error } = useToast();
 
   const scrollToBottom = () => {
@@ -40,10 +47,17 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
   useEffect(() => {
     if (!channelId) return;
 
-    if (!serverId) return;
+    if (!channelId) return;
+
+    // Helper to get collection ref
+    const getCollectionRef = () => {
+      return serverId 
+        ? collection(db, 'servers', serverId, 'channels', channelId, 'messages')
+        : collection(db, 'dms', channelId, 'messages');
+    };
 
     const q = query(
-      collection(db, 'servers', serverId, 'channels', channelId, 'messages'),
+      getCollectionRef(),
       orderBy('timestamp', 'desc'),
       limit(20)
     );
@@ -59,7 +73,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
       
       // Check for new mentions and replies - ONLY if not initial load
       if (!isInitialLoadRef.current && messagesData.length > lastMessageCountRef.current && currentUserId) {
-        const currentUser = users.find(u => u.id === currentUserId);
+        const currentUser = usersRef.current?.find(u => u.id === currentUserId);
         if (currentUser?.displayName) {
           const newMessages = messagesData.slice(lastMessageCountRef.current);
           
@@ -76,7 +90,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
           });
           
           if (hasMention || hasReply) {
-            console.log('Playing notification sound - mention:', hasMention, 'reply:', hasReply);
+            console.log('Playing notification sound', { hasMention, hasReply });
             playNotificationSound();
           }
         }
@@ -106,7 +120,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
       unsubscribe();
       isInitialLoadRef.current = true; // Reset for next channel
     };
-  }, [channelId, serverId, currentUserId, users, onMessagesChange]);
+  }, [channelId, serverId, currentUserId, onMessagesChange]);
 
   const loadMore = async () => {
     if (!channelId || !oldestMessage || loadingMore || !hasMore) return;
@@ -117,7 +131,9 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
 
     try {
       const q = query(
-        collection(db, 'servers', serverId, 'channels', channelId, 'messages'),
+        serverId 
+          ? collection(db, 'servers', serverId, 'channels', channelId, 'messages')
+          : collection(db, 'dms', channelId, 'messages'),
         orderBy('timestamp', 'desc'),
         startAfter(oldestMessage.timestamp),
         limit(20)
@@ -172,15 +188,23 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
     if (!deleteConfirm) return;
 
     try {
-      await deleteDoc(doc(db, 'servers', serverId, 'channels', channelId, 'messages', deleteConfirm.id));
+      // Get the author name before deleting
+      const originalAuthor = users.find(u => u.id === deleteConfirm.userId);
+      
+      const docRef = serverId 
+        ? doc(db, 'servers', serverId, 'channels', channelId, 'messages', deleteConfirm.id)
+        : doc(db, 'dms', channelId, 'messages', deleteConfirm.id);
+        
+      await deleteDoc(docRef);
       
       await addDoc(collection(db, 'adminLogs'), {
         type: 'message_delete',
         channelId: channelId,
         messageId: deleteConfirm.id,
         userId: currentUserId,
-        deletedText: deleteConfirm.text,
+        deletedText: deleteConfirm.text || '(empty)',
         originalUserId: deleteConfirm.userId,
+        originalUserName: originalAuthor?.displayName || 'Unknown User',
         timestamp: serverTimestamp(),
       });
 
@@ -220,7 +244,11 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
     setEditText('');
 
     try {
-      await updateDoc(doc(db, 'channels', channelId, 'messages', messageId), {
+      const docRef = serverId 
+        ? doc(db, 'servers', serverId, 'channels', channelId, 'messages', messageId)
+        : doc(db, 'dms', channelId, 'messages', messageId);
+
+      await updateDoc(docRef, {
         text: newText,
         edited: true,
         editedAt: serverTimestamp(),
@@ -270,7 +298,11 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
         reactions[emoji] = [currentUserId];
       }
       
-      await updateDoc(doc(db, 'servers', serverId, 'channels', channelId, 'messages', messageId), {
+      const docRef = serverId 
+        ? doc(db, 'servers', serverId, 'channels', channelId, 'messages', messageId)
+        : doc(db, 'dms', channelId, 'messages', messageId);
+
+      await updateDoc(docRef, {
         reactions
       });
     } catch (err) {
@@ -288,7 +320,11 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
     try {
       const newPinnedState = !message.pinned;
       
-      await updateDoc(doc(db, 'servers', serverId, 'channels', channelId, 'messages', message.id), {
+      const docRef = serverId 
+        ? doc(db, 'servers', serverId, 'channels', channelId, 'messages', message.id)
+        : doc(db, 'dms', channelId, 'messages', message.id);
+
+      await updateDoc(docRef, {
         pinned: newPinnedState,
         pinnedBy: newPinnedState ? currentUserId : null,
         pinnedAt: newPinnedState ? serverTimestamp() : null,
@@ -542,6 +578,9 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                         {message.text}
                       </MarkdownText>
                     </div>
+                    
+                    {/* Link Previews (YouTube, Spotify, Twitter, etc.) */}
+                    <MessageLinkPreviews text={message.text} />
                     
                     {/* Reactions Display */}
                     {message.reactions && Object.keys(message.reactions).length > 0 && (

@@ -6,19 +6,20 @@ import { Button } from '../shared/Button';
 import { Input } from '../shared/Input';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { AdminLogsTab } from './AdminLogsTab';
-import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, onSnapshot, query } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, onSnapshot, query, getDocs, where, writeBatch } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, MdSettings } from 'react-icons/md';
+import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, MdSettings, MdCleaningServices } from 'react-icons/md';
 import { FaHashtag } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
+import { useToast } from '../../context/ToastContext';
 
-// Admin Panel Categories
 const ADMIN_TABS = [
   { id: 'users', label: 'Users', icon: MdPeople, category: 'Moderation' },
   { id: 'roles', label: 'Roles', icon: MdTag, category: 'Moderation' },
   { id: 'channels', label: 'Channels', icon: FaHashtag, category: 'Server Settings' },
   { id: 'server', label: 'Overview', icon: MdInfo, category: 'Server Settings' },
   { id: 'logs', label: 'Audit Log', icon: MdHistory, category: 'Server Settings' },
+  { id: 'cleanup', label: 'Cleanup', icon: MdCleaningServices, category: 'Maintenance' },
 ];
 
 export const AdminPanel = ({ isOpen, onClose }) => {
@@ -31,6 +32,12 @@ export const AdminPanel = ({ isOpen, onClose }) => {
   const [editingRole, setEditingRole] = useState(null);
   const [newRole, setNewRole] = useState({ name: '', color: '#5865f2' });
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const { success, error: showError } = useToast();
+  
+  // Cleanup state
+  const [expiredInvitesCount, setExpiredInvitesCount] = useState(0);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupConfirm, setCleanupConfirm] = useState(null);
 
   // Handle ESC key to close
   useEffect(() => {
@@ -63,6 +70,71 @@ export const AdminPanel = ({ isOpen, onClose }) => {
     });
     return unsubscribe;
   }, []);
+
+  // Fetch cleanup stats when cleanup tab is active
+  useEffect(() => {
+    if (activeTab !== 'cleanup') return;
+    
+    const fetchCleanupStats = async () => {
+      try {
+        // Get expired/used invite codes
+        const invitesSnapshot = await getDocs(collection(db, 'inviteCodes'));
+        const now = new Date();
+        let expiredCount = 0;
+        
+        invitesSnapshot.forEach((doc) => {
+          const data = doc.data();
+          const isExpired = data.expiresAt?.toDate() < now;
+          const isUsed = !data.isActive || data.uses >= data.maxUses;
+          if (isExpired || isUsed) {
+            expiredCount++;
+          }
+        });
+        setExpiredInvitesCount(expiredCount);
+        
+      } catch (err) {
+        console.error('Error fetching cleanup stats:', err);
+      }
+    };
+    
+    fetchCleanupStats();
+  }, [activeTab]);
+
+  // Cleanup expired invite codes
+  const cleanupInviteCodes = async () => {
+    setCleanupLoading(true);
+    try {
+      const invitesSnapshot = await getDocs(collection(db, 'inviteCodes'));
+      const now = new Date();
+      const batch = writeBatch(db);
+      let deleteCount = 0;
+      
+      invitesSnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const isExpired = data.expiresAt?.toDate() < now;
+        const isUsed = !data.isActive || data.uses >= data.maxUses;
+        
+        if (isExpired || isUsed) {
+          batch.delete(doc(db, 'inviteCodes', docSnap.id));
+          deleteCount++;
+        }
+      });
+      
+      if (deleteCount > 0) {
+        await batch.commit();
+        success(`${deleteCount} expired invite code(s) deleted`);
+        setExpiredInvitesCount(0);
+      } else {
+        success('No expired invite codes to delete');
+      }
+    } catch (err) {
+      console.error('Error cleaning invite codes:', err);
+      showError('Failed to clean invite codes');
+    } finally {
+      setCleanupLoading(false);
+      setCleanupConfirm(null);
+    }
+  };
 
   if (!isOpen) return null;
   if (userProfile?.role !== 'admin') return null;
@@ -432,6 +504,45 @@ export const AdminPanel = ({ isOpen, onClose }) => {
           </div>
         );
 
+      case 'cleanup':
+        return (
+          <div className="space-y-6">
+            <h1 className="text-2xl font-bold text-dark-text">Database Cleanup</h1>
+            <p className="text-dark-muted">Remove unused data to keep your database clean and reduce storage costs.</p>
+            
+            <div className="grid gap-4">
+              {/* Expired Invite Codes Card */}
+              <div className="bg-dark-bg rounded-lg p-6 border border-dark-hover">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-dark-text">Expired Invite Codes</h3>
+                    <p className="text-sm text-dark-muted mt-1">
+                      Expired, used, or deactivated invite codes that are no longer valid.
+                    </p>
+                  </div>
+                  <div className="text-3xl font-bold text-yellow-500">
+                    {expiredInvitesCount}
+                  </div>
+                </div>
+                <Button
+                  variant="warning"
+                  onClick={() => setCleanupConfirm('invites')}
+                  disabled={expiredInvitesCount === 0 || cleanupLoading}
+                  className="w-full"
+                >
+                  <MdDelete size={20} />
+                  {cleanupLoading ? 'Cleaning...' : 'Clean Invite Codes'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="text-xs text-dark-muted bg-dark-sidebar p-4 rounded-lg">
+              <strong>Note:</strong> These actions are irreversible. Deleted data cannot be recovered.
+              Running cleanup periodically helps keep your Firestore quota usage low.
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -583,6 +694,17 @@ export const AdminPanel = ({ isOpen, onClose }) => {
         title={`Delete ${confirmDialog?.type === 'channel' ? 'Channel' : 'Role'}`}
         message={`Are you sure you want to delete "${confirmDialog?.name}"? This cannot be undone.`}
         confirmText="Delete"
+        variant="danger"
+      />
+
+      {/* Cleanup Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!cleanupConfirm}
+        onClose={() => setCleanupConfirm(null)}
+        onConfirm={cleanupInviteCodes}
+        title="Clean Invite Codes"
+        message={`Are you sure you want to delete ${expiredInvitesCount} expired/used invite code(s)? This action cannot be undone.`}
+        confirmText="Clean"
         variant="danger"
       />
     </div>

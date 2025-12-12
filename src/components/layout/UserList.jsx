@@ -5,7 +5,7 @@ import { UserProfileCard } from '../shared/UserProfileCard';
 import { StatusIndicator, getStatusConfig } from '../shared/StatusIndicator';
 import { isUserOnline as checkUserOnline } from '../../hooks/usePresence';
 
-export const UserList = ({ users, currentUserId }) => {
+export const UserList = ({ users, currentUserId, onStartDm }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   
   
@@ -124,6 +124,10 @@ export const UserList = ({ users, currentUserId }) => {
         user={selectedUser}
         isOpen={!!selectedUser}
         onClose={() => setSelectedUser(null)}
+        onMessage={(user) => {
+          onStartDm && onStartDm(user);
+          setSelectedUser(null);
+        }}
       />
     </div>
   );

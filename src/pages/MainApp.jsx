@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, updateDoc, deleteField } from 'firebase/firestore';
+import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -20,14 +20,16 @@ import { FaHashtag } from 'react-icons/fa';
 import { MdPushPin } from 'react-icons/md';
 import { VerifyEmailScreen } from '../components/auth/VerifyEmailScreen';
 import { usePresence } from '../hooks/usePresence';
+import { DMView } from '../components/dm/DMView';
 
 export const MainApp = () => {
   const { currentUser, userProfile, logout } = useAuth();
-  const { users, channels, server, servers, currentServer, setCurrentServer, unreadMentions } = useData();
+  const { users, channels, server, servers, currentServer, setCurrentServer, unreadMentions, dms } = useData();
   
   // Send presence heartbeat every 5 minutes
   usePresence(currentUser?.uid);
   const [selectedChannel, setSelectedChannel] = useState(null);
+  const [selectedDm, setSelectedDm] = useState(null);
   // ... existing state ...
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -59,6 +61,52 @@ export const MainApp = () => {
       setSelectedChannel(null);
     }
   }, [currentServer, channels]);
+  const handleServerChange = async (serverId) => {
+    setCurrentServer(serverId);
+    if (currentUser) {
+      try {
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+          currentServer: serverId
+        });
+      } catch (err) {
+        console.error('Failed to persist server selection:', err);
+      }
+    }
+  };
+
+  const handleStartDm = async (targetUser) => {
+    if (!currentUser || !targetUser) return;
+    
+    // Check if DM already exists
+    const existingDm = dms.find(dm => 
+      dm.participants.includes(targetUser.id) && 
+      dm.participants.includes(currentUser.uid)
+    );
+    
+    if (existingDm) {
+      setSelectedDm(existingDm);
+      handleServerChange('home');
+    } else {
+      // Create new DM
+      try {
+        const dmRef = await addDoc(collection(db, 'dms'), {
+          participants: [currentUser.uid, targetUser.id],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          lastMessage: null
+        });
+        
+        // Optimistically set selected DM (or wait for real-time listener)
+        // We'll wait for listener to update 'dms' prop, but we can set view to home
+        // Optimistically set selected DM (or wait for real-time listener)
+        // We'll wait for listener to update 'dms' prop, but we can set view to home
+        handleServerChange('home');
+        // We might want to select it once it appears, but for now user will see it in list
+      } catch (err) {
+        console.error('Error creating DM:', err);
+      }
+    }
+  };
 
   // Enforce Email Verification
   if (currentUser && !currentUser.emailVerified) {
@@ -72,7 +120,7 @@ export const MainApp = () => {
         <ServerSwitcher
           servers={servers}
           currentServerId={currentServer}
-          onServerChange={setCurrentServer}
+          onServerChange={handleServerChange}
           onCreateServer={() => setShowCreateServer(true)}
           onJoinServer={() => setShowJoinServer(true)}
           userRole={userProfile?.role}
@@ -93,81 +141,102 @@ export const MainApp = () => {
           serverId={currentServer}
           userRole={userProfile?.role}
           userId={currentUser?.uid}
+          dms={dms}
+          selectedDm={selectedDm}
+          onSelectDm={setSelectedDm}
         />
 
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
-          {/* Channel Header */}
-          <div className="h-12 px-4 flex items-center justify-between border-b border-dark-hover shadow-sm bg-dark-bg">
-            <div className="flex items-center gap-2">
-              <FaHashtag className="text-dark-muted" />
-              <h2 className="font-semibold text-dark-text">
-                {selectedChannel?.name || 'Select a channel'}
-              </h2>
-            </div>
-            <div className="flex items-center gap-3">
-              {selectedChannel && (
-                <>
-                  {/* Pinned Messages Toggle */}
-                  {messages.filter(m => m.pinned).length > 0 && (
-                    <button
-                      onClick={() => setShowPinned(!showPinned)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${
-                        showPinned 
-                          ? 'bg-brand-primary text-white' 
-                          : 'bg-dark-hover text-dark-text hover:bg-dark-input'
-                      }`}
-                    >
-                      <MdPushPin size={16} />
-                      <span className="text-sm font-medium">
-                        {messages.filter(m => m.pinned).length} Pinned
-                      </span>
-                    </button>
+          {currentServer === 'home' ? (
+            selectedDm ? (
+              <DMView dmId={selectedDm.id} dms={dms} />
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-dark-muted">
+                Select a conversation to start chatting
+              </div>
+            )
+          ) : (
+            <>
+              {/* Channel Header */}
+              <div className="h-12 px-4 flex items-center justify-between border-b border-dark-hover shadow-sm bg-dark-bg">
+                <div className="flex items-center gap-2">
+                  <FaHashtag className="text-dark-muted" />
+                  <h2 className="font-semibold text-dark-text">
+                    {selectedChannel?.name || 'Select a channel'}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-3">
+                  {selectedChannel && (
+                    <>
+                      {/* Pinned Messages Toggle */}
+                      {messages.filter(m => m.pinned).length > 0 && (
+                        <button
+                          onClick={() => setShowPinned(!showPinned)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${
+                            showPinned 
+                              ? 'bg-brand-primary text-white' 
+                              : 'bg-dark-hover text-dark-text hover:bg-dark-input'
+                          }`}
+                        >
+                          <MdPushPin size={16} />
+                          <span className="text-sm font-medium">
+                            {messages.filter(m => m.pinned).length} Pinned
+                          </span>
+                        </button>
+                      )}
+                      
+                      <MessageSearch
+                        messages={messages}
+                        users={users}
+                        onResultClick={(msg) => console.log('Scroll to:', msg)}
+                      />
+                    </>
                   )}
-                  
-                  <MessageSearch
-                    messages={messages}
+                </div>
+              </div>
+
+              {/* Messages */}
+              {selectedChannel ? (
+                <>
+                  <MessageList 
+                    serverId={currentServer}
+                    channelId={selectedChannel.id} 
                     users={users}
-                    onResultClick={(msg) => console.log('Scroll to:', msg)}
+                    currentUserId={currentUser?.uid}
+                    userRole={userProfile?.role}
+                    onReply={setReplyingTo}
+                    onMessagesChange={setMessages}
+                  />
+                  <MessageInput
+                    serverId={currentServer}
+                    channelId={selectedChannel.id}
+                    channel={selectedChannel}
+                    userId={currentUser?.uid}
+                    userProfile={userProfile}
+                    userRole={userProfile?.role}
+                    users={users}
+                    replyingTo={replyingTo}
+                    onCancelReply={() => setReplyingTo(null)}
                   />
                 </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-dark-muted">
+                  Select a channel to start chatting
+                </div>
               )}
-            </div>
-          </div>
-
-          {/* Messages */}
-          {selectedChannel ? (
-            <>
-              <MessageList 
-                serverId={currentServer}
-                channelId={selectedChannel.id} 
-                users={users}
-                currentUserId={currentUser?.uid}
-                userRole={userProfile?.role}
-                onReply={setReplyingTo}
-                onMessagesChange={setMessages}
-              />
-              <MessageInput
-                serverId={currentServer}
-                channelId={selectedChannel.id}
-                channel={selectedChannel}
-                userId={currentUser?.uid}
-                userProfile={userProfile}
-                userRole={userProfile?.role}
-                users={users}
-                replyingTo={replyingTo}
-                onCancelReply={() => setReplyingTo(null)}
-              />
             </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-dark-muted">
-              Select a channel to start chatting
-            </div>
           )}
         </div>
 
-        {/* User List */}
-        <UserList users={users} currentUserId={currentUser?.uid} />
+        {/* User List - Only show in servers */}
+        {currentServer !== 'home' && (
+          <UserList 
+            users={users} 
+            currentUserId={currentUser?.uid} 
+            onStartDm={handleStartDm}
+          />
+        )}
         
         {/* Pinned Messages Panel */}
         {showPinned && selectedChannel && (

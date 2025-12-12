@@ -8,8 +8,9 @@ import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { InviteCodeModal } from '../server/InviteCodeModal';
 import { PresenceSelector } from '../shared/PresenceSelector';
 import { StatusIndicator } from '../shared/StatusIndicator';
+import { DMList } from '../dm/DMList';
 
-export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId }) => {
+export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId, dms, selectedDm, onSelectDm }) => {
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -49,31 +50,39 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
         </div>
       </div>
 
-      {/* Channels List */}
+      {/* Channels List or DM List */}
       <div className="flex-1 overflow-y-auto py-3">
-        <div className="px-2">
-          <div className="text-xs font-semibold text-dark-muted uppercase px-2 mb-1">
-            Text Channels
+        {serverId === 'home' ? (
+           <DMList 
+             dms={dms} 
+             selectedDmId={selectedDm?.id} 
+             onSelectDm={onSelectDm} 
+           />
+        ) : (
+          <div className="px-2">
+            <div className="text-xs font-semibold text-dark-muted uppercase px-2 mb-1">
+              Text Channels
+            </div>
+            {channels.map((channel) => (
+              <button
+                key={channel.id}
+                onClick={() => onSelectChannel(channel)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-2 py-1.5 rounded',
+                  'text-dark-muted hover:bg-dark-hover hover:text-dark-text',
+                  'transition-colors duration-150',
+                  selectedChannel?.id === channel.id && 'bg-dark-hover text-dark-text'
+                )}
+              >
+                <FaHashtag className="flex-shrink-0" />
+                <span className="truncate text-sm flex-1 text-left">{channel.name}</span>
+                {channel.locked && (
+                  <MdLock className="flex-shrink-0 text-yellow-500" size={14} title="Locked channel" />
+                )}
+              </button>
+            ))}
           </div>
-          {channels.map((channel) => (
-            <button
-              key={channel.id}
-              onClick={() => onSelectChannel(channel)}
-              className={cn(
-                'w-full flex items-center gap-2 px-2 py-1.5 rounded',
-                'text-dark-muted hover:bg-dark-hover hover:text-dark-text',
-                'transition-colors duration-150',
-                selectedChannel?.id === channel.id && 'bg-dark-hover text-dark-text'
-              )}
-            >
-              <FaHashtag className="flex-shrink-0" />
-              <span className="truncate text-sm flex-1 text-left">{channel.name}</span>
-              {channel.locked && (
-                <MdLock className="flex-shrink-0 text-yellow-500" size={14} title="Locked channel" />
-              )}
-            </button>
-          ))}
-        </div>
+        )}
       </div>
 
       {/* User Panel */}

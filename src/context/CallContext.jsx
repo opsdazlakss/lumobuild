@@ -32,6 +32,11 @@ export const CallProvider = ({ children }) => {
   
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  
+  // Device selection state
+  const [availableDevices, setAvailableDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
+  const [selectedMicId, setSelectedMicId] = useState('');
+  const [selectedCameraId, setSelectedCameraId] = useState('');
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -185,13 +190,71 @@ export const CallProvider = ({ children }) => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // 3. Helper: Get Media Stream
+  // 3. Helper: Enumerate available media devices
+  const refreshDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      
+      setAvailableDevices({ audioInputs, videoInputs, audioOutputs });
+      
+      // Set default devices if not already selected
+      if (!selectedMicId && audioInputs.length > 0) {
+        setSelectedMicId(audioInputs[0].deviceId);
+      }
+      if (!selectedCameraId && videoInputs.length > 0) {
+        setSelectedCameraId(videoInputs[0].deviceId);
+      }
+      
+      console.log('Devices enumerated:', { audioInputs: audioInputs.length, videoInputs: videoInputs.length });
+      return { audioInputs, videoInputs, audioOutputs };
+    } catch (err) {
+      console.error('Failed to enumerate devices:', err);
+      return { audioInputs: [], videoInputs: [], audioOutputs: [] };
+    }
+  };
+
+  // Initial device enumeration
+  useEffect(() => {
+    refreshDevices();
+    
+    // Listen for device changes (plugging in/out devices)
+    navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
+  }, []);
+
+  // 4. Helper: Get Media Stream with enhanced audio quality and selected devices
   const getMediaStream = async (video = true) => {
     try {
+      // Ensure devices are enumerated
+      if (availableDevices.audioInputs.length === 0) {
+        await refreshDevices();
+      }
+      
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+        sampleRate: 48000,
+        sampleSize: 16,
+        ...(selectedMicId && { deviceId: { exact: selectedMicId } })
+      };
+      
+      const videoConstraints = video ? {
+        width: 1280,
+        height: 720,
+        ...(selectedCameraId && { deviceId: { exact: selectedCameraId } })
+      } : false;
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: video ? { width: 1280, height: 720 } : false,
-        audio: true
+        video: videoConstraints,
+        audio: audioConstraints
       });
+      
+      console.log('Media stream acquired with selected devices');
       setLocalStream(stream);
       return stream;
     } catch (err) {
@@ -668,7 +731,14 @@ export const CallProvider = ({ children }) => {
     isVideoOff,
     activeCall,
     isScreenSharing: !!screenStreamRef.current,
-    toggleScreenShare
+    toggleScreenShare,
+    // Device selection
+    availableDevices,
+    selectedMicId,
+    selectedCameraId,
+    setSelectedMicId,
+    setSelectedCameraId,
+    refreshDevices
   };
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;

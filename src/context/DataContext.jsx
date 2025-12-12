@@ -22,7 +22,9 @@ export const DataProvider = ({ children }) => {
   const [channels, setChannels] = useState([]);
   const [server, setServer] = useState(null);
   const [unreadMentions, setUnreadMentions] = useState({});
+  const [dms, setDms] = useState([]);
   const lastMentionCountRef = useRef({});
+  const isDmInitialLoad = useRef(true);
 
   // Load server members with batched fetching (optimized for quota)
   useEffect(() => {
@@ -230,22 +232,21 @@ export const DataProvider = ({ children }) => {
       setCurrentServer(prev => {
         const firestoreCurrentServer = userData?.currentServer;
         
-        if (firestoreCurrentServer && serverIds.includes(firestoreCurrentServer) && firestoreCurrentServer !== prev) {
-          return firestoreCurrentServer;
-        }
-        
+        // Initial load
         if (!prev) {
-          if (firestoreCurrentServer && serverIds.includes(firestoreCurrentServer)) {
+          if (firestoreCurrentServer && (firestoreCurrentServer === 'home' || serverIds.includes(firestoreCurrentServer))) {
             return firestoreCurrentServer;
           }
-          return serverIds[0];
+          return serverIds.length > 0 ? serverIds[0] : 'home';
         }
         
-        if (serverIds.includes(prev)) {
+        // Validate current selection
+        if (prev === 'home' || serverIds.includes(prev)) {
           return prev;
         }
         
-        return serverIds[0];
+        // Fallback if current server invalid (e.g. kicked)
+        return serverIds.length > 0 ? serverIds[0] : 'home';
       });
     });
 
@@ -295,6 +296,57 @@ export const DataProvider = ({ children }) => {
     };
   }, [myServerIds]);
 
+  // Subscribe to user's DMs
+  useEffect(() => {
+    if (!currentUser) {
+      setDms([]);
+      return;
+    }
+    
+    isDmInitialLoad.current = true;
+
+    const q = query(
+      collection(db, 'dms'),
+      where('participants', 'array-contains', currentUser.uid)
+      // Note: Ordering requires a composite index, doing client-side sort for now
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const dmsData = [];
+      snapshot.forEach((doc) => {
+        dmsData.push({ id: doc.id, ...doc.data() });
+      });
+      // Sort by updatedAt desc
+      dmsData.sort((a, b) => {
+        const timeA = a.updatedAt?.toMillis() || 0;
+        const timeB = b.updatedAt?.toMillis() || 0;
+        return timeB - timeA;
+      });
+      setDms(dmsData);
+
+      // Notification Sound Logic
+      if (!isDmInitialLoad.current) {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'modified' || change.type === 'added') {
+            const data = change.doc.data();
+            // If last message update is recent and from someone else
+            if (data.lastMessage && data.lastMessage.userId !== currentUser.uid) {
+              const now = Date.now();
+              const msgTime = data.lastMessage.timestamp?.toMillis() || 0;
+              // Only notify if message is less than 30 seconds old (prevents old stale updates)
+              if (now - msgTime < 30000) {
+                 playNotificationSound();
+              }
+            }
+          }
+        });
+      }
+      isDmInitialLoad.current = false;
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
   // Update current server object and listen to channels
   useEffect(() => {
     if (!currentServer) {
@@ -331,6 +383,7 @@ export const DataProvider = ({ children }) => {
     setCurrentServer,
     channels,
     server,
+    dms,
     unreadMentions,
   };
 

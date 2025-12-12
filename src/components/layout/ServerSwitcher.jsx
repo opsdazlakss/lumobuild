@@ -20,11 +20,19 @@ export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCre
     <div className="w-20 bg-dark-bg h-full flex flex-col items-center">
       {/* Lumo Logo - Independent Section */}
       <div className="flex flex-col items-center">
-        <img 
-          src={lumoLogo} 
-          alt="Lumo" 
-          className="w-20 h-20 object-contain cursor-pointer"
-        />
+        <button 
+          onClick={() => onServerChange('home')}
+          className={cn(
+            "transition-all duration-200 rounded-2xl overflow-hidden",
+            currentServerId === 'home' || !currentServerId ? "rounded-xl ring-2 ring-brand-primary ring-offset-2 ring-offset-dark-bg" : "hover:rounded-xl"
+          )}
+        >
+          <img 
+            src={lumoLogo} 
+            alt="Home" 
+            className="w-16 h-16 object-contain cursor-pointer bg-dark-bg p-1"
+          />
+        </button>
       </div>
 
       {/* Separator */}

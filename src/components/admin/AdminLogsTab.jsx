@@ -78,11 +78,11 @@ export const AdminLogsTab = () => {
                   <>
                     <div className="flex gap-2">
                       <span className="text-dark-muted">Original Author:</span>
-                      <span className="text-dark-text">{log.originalAuthorName}</span>
+                      <span className="text-dark-text">{log.originalAuthorName || log.originalUserName || 'Unknown'}</span>
                     </div>
                     <div className="flex gap-2">
                       <span className="text-dark-muted">Message:</span>
-                      <span className="text-dark-text italic">"{log.messageText}"</span>
+                      <span className="text-dark-text italic">"{log.messageText || log.deletedText || '(empty message)'}"</span>
                     </div>
                   </>
                 )}

@@ -2,9 +2,9 @@ import { Modal } from './Modal';
 import { cn } from '../../utils/helpers';
 import { useCall } from '../../context/CallContext';
 import { useAuth } from '../../context/AuthContext';
-import { MdPhone, MdVideocam } from 'react-icons/md';
+import { MdPhone, MdVideocam, MdMessage } from 'react-icons/md';
 
-export const UserProfileCard = ({ user, isOpen, onClose }) => {
+export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
   if (!user) return null;
 
   const getRoleColor = (role) => {
@@ -94,6 +94,13 @@ export const UserProfileCard = ({ user, isOpen, onClose }) => {
           {/* Call Actions */}
           {user.id !== useAuth().currentUser?.uid && (
               <div className="flex gap-2 justify-center mt-4">
+                 <button 
+                   onClick={() => onMessage && onMessage(user)}
+                   className="p-2 rounded-full bg-dark-hover hover:bg-dark-sidebar transition-colors text-dark-text"
+                   title="Send Message"
+                 >
+                    <MdMessage size={20} />
+                 </button>
                  <button 
                    onClick={() => startCall(user, 'voice')}
                    className="p-2 rounded-full bg-dark-hover hover:bg-dark-sidebar transition-colors text-dark-text"

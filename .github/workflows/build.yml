@@ -1,101 +1,80 @@
-{
-  "name": "lumo",
-  "private": true,
-  "version": "1.0.5",
-  "type": "module",
-  "main": "electron/main.cjs",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
-    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:5173 && electron .\"",
-    "electron:build": "vite build && electron-builder"
-  },
-  "dependencies": {
-    "@giphy/js-fetch-api": "^5.7.0",
-    "@giphy/react-components": "^10.1.0",
-    "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
-    "electron-log": "^5.4.3",
-    "electron-updater": "^6.6.2",
-    "emoji-picker-react": "^4.16.1",
-    "firebase": "^12.6.0",
-    "peerjs": "^1.5.5",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-draggable": "^4.5.0",
-    "react-icons": "^5.5.0",
-    "react-router-dom": "^7.10.0",
-    "simple-peer": "^9.11.1",
-    "tailwind-merge": "^3.4.0"
-  },
-  "description": "Lumo - Modern Chat Application",
-  "author": "Hasan",
-  "build": {
-    "appId": "com.hasan.lumo",
-    "productName": "Lumo",
+name: Build Lumo
 
-    "files": [
-      "dist/**/*",
-      "electron/main.cjs"
-    ],
-    "directories": {
-      "output": "dist"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "public/lumo-logo.png",
-      "artifactName": "LumoSetup_win.${ext}"
-    },
-    "mac": {
-      "target": "dmg",
-      "icon": "public/lumo-logo.png",
-      "category": "public.app-category.social-networking",
-      "extendInfo": {
-        "NSCameraUsageDescription": "Lumo needs access to your camera for video calls.",
-        "NSMicrophoneUsageDescription": "Lumo needs access to your microphone for voice and video calls.",
-        "NSScreenCaptureUsageDescription": "Lumo needs access to share your screen."
-      },
-      "artifactName": "LumoSetup_mac.${ext}"
-    },
-    "linux": {
-      "target": "AppImage",
-      "icon": "public/lumo-logo.png",
-      "category": "Network",
-      "artifactName": "LumoSetup_linux.${ext}"
-    },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "opsdazlakss",
-        "repo": "lumobuild"
-      }
-    ]
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/opsdazlakss/lumobuild.git"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/react": "^19.2.5",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
-    "autoprefixer": "^10.4.22",
-    "concurrently": "^9.2.1",
-    "electron": "^39.2.6",
-    "electron-builder": "^26.0.12",
-    "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "gh-pages": "^6.3.0",
-    "globals": "^16.5.0",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.18",
-    "vite": "^7.2.4",
-    "wait-on": "^9.0.3"
-  }
-}
+on:
+  push:
+    branches:
+      - main  # Build on every push to main
+    tags:
+      - 'v*'  # Also trigger on version tags for releases
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build Electron app
+        run: npm run electron:build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GIPHY_API_KEY: ${{ secrets.VITE_GIPHY_API_KEY }}
+      
+      - name: Upload artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lumo-Windows
+          path: dist/*.exe
+      
+      - name: Upload artifacts (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lumo-macOS
+          path: dist/*.dmg
+      
+      - name: Upload artifacts (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lumo-Linux
+          path: dist/*.AppImage
+      
+      # Create release if triggered by tag
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.yml
+            dist/*.blockmap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -8,6 +8,9 @@ on:
       - 'v*'  # Also trigger on version tags for releases
   workflow_dispatch: # Allow manual trigger
 
+permissions:
+  contents: write  # Required for creating releases
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}

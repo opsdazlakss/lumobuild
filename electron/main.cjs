@@ -7,71 +7,145 @@ const log = require('electron-log');
 log.transports.file.level = 'info';
 autoUpdater.logger = log;
 
-function createWindow() {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
+let splashWindow = null;
+let mainWindow = null;
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 400,
+    height: 300,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    icon: path.join(__dirname, '../public/lumo-logo.png'),
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+
+  // Load splash based on environment
+  const isDev = !app.isPackaged;
+  if (isDev) {
+    splashWindow.loadFile(path.join(__dirname, '../public/splash.html'));
+  } else {
+    splashWindow.loadFile(path.join(__dirname, '../dist/splash.html'));
+  }
+
+  // Send version info
+  splashWindow.webContents.on('did-finish-load', () => {
+    const version = `v${app.getVersion()}`;
+    splashWindow.webContents.send('version', version);
+  });
+}
+
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     minWidth: 940,
     minHeight: 500,
     title: 'Lumo',
-    frame: true, // We can set this to false later for custom title bar
-    autoHideMenuBar: true, // Hide the default menu bar (File, Edit, etc.)
+    frame: true,
+    autoHideMenuBar: true,
+    show: false, // Don't show until ready
     icon: path.join(__dirname, '../public/lumo-logo.png'),
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false, // For simpler dev, consider secure defaults for prod
+      contextIsolation: false,
     },
-    backgroundColor: '#2c2b31', // Lumo dark background
+    backgroundColor: '#2c2b31',
   });
 
-  // Load the app
   const isDev = !app.isPackaged;
   
   if (isDev) {
-    // In development, load from Vite dev server
     mainWindow.loadURL('http://localhost:5173');
-    // Open the DevTools.
     mainWindow.webContents.openDevTools();
-    console.log('Running in development mode');
   } else {
-    // In production, load the built index.html
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-    console.log('Running in production mode');
+  }
+
+  // Show main window and close splash when ready
+  mainWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close();
+    }
+    mainWindow.show();
+  });
+}
+
+function sendStatusToSplash(message) {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('update-status', message);
   }
 }
 
-// Auto-updater events
-autoUpdater.on('update-available', () => {
+// Auto-updater events for splash window
+autoUpdater.on('checking-for-update', () => {
+  log.info('Checking for update...');
+  sendStatusToSplash('Checking for updates...');
+});
+
+autoUpdater.on('update-available', (info) => {
   log.info('Update available.');
+  sendStatusToSplash('Update found! Downloading...');
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  log.info('No update available.');
+  sendStatusToSplash('Starting Lumo...');
+  // Launch main app after short delay
+  setTimeout(() => {
+    createMainWindow();
+  }, 500);
+});
+
+autoUpdater.on('error', (err) => {
+  log.error('Update error:', err);
+  sendStatusToSplash('Starting Lumo...');
+  // Launch main app even if update check fails
+  setTimeout(() => {
+    createMainWindow();
+  }, 500);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  const percent = Math.round(progressObj.percent);
+  sendStatusToSplash(`Downloading update... ${percent}%`);
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('download-progress', percent);
+  }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
   log.info('Update downloaded.');
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Ready',
-    message: 'A new version of Lumo is ready. Restart now to apply?',
-    buttons: ['Restart', 'Later']
-  }).then((returnValue) => {
-    if (returnValue.response === 0) autoUpdater.quitAndInstall();
-  });
+  sendStatusToSplash('Restarting to apply update...');
+  setTimeout(() => {
+    autoUpdater.quitAndInstall();
+  }, 1500);
 });
 
-// This method will be called when Electron has finished initialization
+// App ready
 app.whenReady().then(() => {
-  createWindow();
+  const isDev = !app.isPackaged;
   
-  // Check for updates (only in production)
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify();
+  if (isDev) {
+    // In development, skip splash and go directly to main window
+    createMainWindow();
+    mainWindow.show();
+  } else {
+    // In production, show splash and check for updates
+    createSplashWindow();
+    autoUpdater.checkForUpdates();
   }
 
   app.on('activate', () => {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      createMainWindow();
     }
   });
 });

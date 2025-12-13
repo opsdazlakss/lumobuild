@@ -2,10 +2,8 @@ name: Build Lumo
 
 on:
   push:
-    branches:
-      - main  # Build on every push to main
     tags:
-      - 'v*'  # Also trigger on version tags for releases
+      - 'v*'  # Only trigger on version tags for releases
   workflow_dispatch: # Allow manual trigger
 
 permissions:

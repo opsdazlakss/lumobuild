@@ -70,14 +70,14 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "Hasan",
-        "repo": "lumo"
+        "owner": "opsdazlakss",
+        "repo": "lumobuild"
       }
     ]
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Hasan/lumo.git"
+    "url": "https://github.com/opsdazlakss/lumobuild.git"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

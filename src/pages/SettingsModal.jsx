@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Button } from '../components/shared/Button';
@@ -6,8 +6,9 @@ import { Input } from '../components/shared/Input';
 import { StatusSelector } from '../components/shared/StatusSelector';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo } from 'react-icons/md';
+import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage } from 'react-icons/md';
 
 // Settings categories
 const SETTINGS_TABS = [
@@ -24,6 +25,9 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   const [photoUrl, setPhotoUrl] = useState(userProfile?.photoUrl || '');
   const [bio, setBio] = useState(userProfile?.bio || '');
   const [updating, setUpdating] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ progress: 0, speed: '' });
+  const profilePhotoInputRef = useRef(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
   
   const [passwordData, setPasswordData] = useState({
@@ -72,6 +76,41 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       error('Failed to update profile photo');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handlePhotoFileUpload = async (file) => {
+    if (!file || !currentUser) return;
+
+    if (!file.type.startsWith('image/')) {
+      error('Please select an image file');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      error('Image size must be less than 10MB');
+      return;
+    }
+
+    setUploadingPhoto(true);
+    try {
+      const imageUrl = await uploadToImgBB(file, (progress, speed) => {
+        setUploadProgress({ progress, speed });
+      });
+
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        photoUrl: imageUrl,
+      });
+
+      setPhotoUrl(imageUrl);
+      success('Profile photo updated successfully!');
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      error('Failed to upload photo');
+    } finally {
+      setUploadingPhoto(false);
+      setUploadProgress({ progress: 0, speed: '' });
+      if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
     }
   };
 
@@ -215,18 +254,66 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             {/* Profile Photo */}
             <div className="bg-dark-bg rounded-lg p-4">
               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Profile Photo</h3>
+              
+              {/* File Upload */}
+              <input
+                type="file"
+                ref={profilePhotoInputRef}
+                onChange={(e) => handlePhotoFileUpload(e.target.files?.[0])}
+                accept="image/*"
+                className="hidden"
+              />
+              
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={() => profilePhotoInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg transition-colors disabled:opacity-50"
+                  disabled={uploadingPhoto}
+                >
+                  {uploadingPhoto ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <MdUpload size={20} />
+                      Upload Image
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              {/* Upload Progress */}
+              {uploadingPhoto && (
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-dark-muted mb-1">
+                    <span>{uploadProgress.speed}</span>
+                    <span>{Math.round(uploadProgress.progress)}%</span>
+                  </div>
+                  <div className="h-1 bg-dark-hover rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-brand-primary transition-all duration-200"
+                      style={{ width: `${uploadProgress.progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Or use URL */}
+              <div className="text-xs text-dark-muted text-center mb-2">or paste image URL</div>
               <Input
                 placeholder="https://example.com/photo.jpg"
                 value={photoUrl}
                 onChange={(e) => setPhotoUrl(e.target.value)}
               />
               <Button
-                variant="primary"
-                className="mt-3"
+                variant="secondary"
+                className="mt-3 w-full"
                 onClick={handleUpdatePhoto}
-                disabled={updating || photoUrl === userProfile?.photoUrl}
+                disabled={updating || photoUrl === userProfile?.photoUrl || uploadingPhoto}
               >
-                {updating ? 'Updating...' : 'Update Photo'}
+                {updating ? 'Updating...' : 'Update from URL'}
               </Button>
             </div>
 

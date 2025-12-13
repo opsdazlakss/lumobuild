@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { AdminLogsTab } from './AdminLogsTab';
 import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, onSnapshot, query, getDocs, where, writeBatch } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, MdSettings, MdCleaningServices } from 'react-icons/md';
+import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, MdSettings, MdCleaningServices, MdDragHandle } from 'react-icons/md';
 import { FaHashtag } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
 import { useToast } from '../../context/ToastContext';
@@ -33,6 +33,7 @@ export const AdminPanel = ({ isOpen, onClose }) => {
   const [customRoles, setCustomRoles] = useState([]);
   const [editingRole, setEditingRole] = useState(null);
   const [newRole, setNewRole] = useState({ name: '', color: '#5865f2' });
+  const [draggedRoleId, setDraggedRoleId] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const { success, error: showError } = useToast();
   
@@ -62,7 +63,8 @@ export const AdminPanel = ({ isOpen, onClose }) => {
 
   // Listen to custom roles
   useEffect(() => {
-    const q = query(collection(db, 'roles'));
+    if (!currentServer || currentServer === 'home') return;
+    const q = query(collection(db, 'servers', currentServer, 'roles'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const rolesData = [];
       snapshot.forEach((doc) => {
@@ -71,7 +73,7 @@ export const AdminPanel = ({ isOpen, onClose }) => {
       setCustomRoles(rolesData);
     });
     return unsubscribe;
-  }, []);
+  }, [currentServer]);
 
   // Fetch cleanup stats when cleanup tab is active
   useEffect(() => {
@@ -143,10 +145,19 @@ export const AdminPanel = ({ isOpen, onClose }) => {
 
   const handleUpdateUserRole = async (userId, newRole) => {
     try {
+      // Update user's global role
       await updateDoc(doc(db, 'users', userId), { role: newRole });
+      
+      // Also update the server member's role for this server
+      if (currentServer) {
+        await updateDoc(doc(db, 'servers', currentServer, 'members', userId), { role: newRole });
+      }
+      
+      success(`Role updated to ${newRole}`);
       setEditingUser(null);
     } catch (error) {
       console.error('Error updating user role:', error);
+      showError(`Failed to update role: ${error.message}`);
     }
   };
 
@@ -217,11 +228,17 @@ export const AdminPanel = ({ isOpen, onClose }) => {
     if (!newRole.name.trim()) return;
 
     try {
-      await addDoc(collection(db, 'roles'), {
+      // Get current max position
+      const maxPosition = customRoles.reduce((max, r) => Math.max(max, r.position || 0), 0);
+      
+      if (currentServer) {
+        await addDoc(collection(db, 'servers', currentServer, 'roles'), {
         name: newRole.name.trim(),
         color: newRole.color,
+        position: maxPosition + 1,
         createdAt: serverTimestamp(),
-      });
+        });
+    }
       setNewRole({ name: '', color: '#5865f2' });
     } catch (error) {
       console.error('Error creating role:', error);
@@ -229,29 +246,108 @@ export const AdminPanel = ({ isOpen, onClose }) => {
   };
 
   const handleUpdateRole = async (roleId, updates) => {
+    if (!currentServer) return;
     try {
-      await updateDoc(doc(db, 'roles', roleId), updates);
+      await updateDoc(doc(db, 'servers', currentServer, 'roles', roleId), updates);
       setEditingRole(null);
     } catch (error) {
       console.error('Error updating role:', error);
     }
   };
 
-  const handleDeleteRole = async () => {
+    const handleDeleteRole = async () => {
     if (!confirmDialog?.data) return;
+    const roleId = confirmDialog.data;
+    
     try {
-      await deleteDoc(doc(db, 'roles', confirmDialog.data));
+      // Find role name to look up users
+      const roleToDelete = customRoles.find(r => r.id === roleId);
+      if (!roleToDelete) return;
+
+      const roleName = roleToDelete.name;
+      const batch = writeBatch(db);
+
+      // 1. Find users in current server who have this role
+      // We use the users state which contains current server members
+      const affectedUsers = users.filter(u => (u.serverRole || u.role) === roleName);
+
+      affectedUsers.forEach(user => {
+        // Update global user profile if their primary role matches
+        if (user.role === roleName) {
+           const userRef = doc(db, 'users', user.id);
+           batch.update(userRef, { role: 'member' });
+        }
+
+        // Update server member record
+        if (currentServer) {
+          const memberRef = doc(db, 'servers', currentServer, 'members', user.id);
+          batch.update(memberRef, { role: 'member' });
+        }
+      });
+
+      // 2. Delete the role document
+      if (currentServer) {
+        const roleRef = doc(db, 'servers', currentServer, 'roles', roleId);
+        batch.delete(roleRef);
+
+        await batch.commit();
+        success(`Role '${roleName}' deleted and ${affectedUsers.length} users reassigned to Member`);
+      }
     } catch (error) {
       console.error('Error deleting role:', error);
+      showError(`Failed to delete role: ${error.message}`);
     }
   };
 
   const allRoles = [
-    { id: 'admin', name: 'admin', color: '#f23f42', isDefault: true },
-    { id: 'moderator', name: 'moderator', color: '#faa81a', isDefault: true },
-    { id: 'member', name: 'member', color: '#80848e', isDefault: true },
+    { id: 'admin', name: 'admin', color: '#f23f42', isDefault: true, position: -3 },
+    { id: 'moderator', name: 'moderator', color: '#faa81a', isDefault: true, position: -2 },
+    { id: 'member', name: 'member', color: '#80848e', isDefault: true, position: -1 },
     ...customRoles,
-  ];
+  ].sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
+
+  // Drag and drop handlers for roles
+  const handleRoleDragStart = (e, roleId) => {
+    setDraggedRoleId(roleId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleRoleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleRoleDrop = async (e, targetRoleId) => {
+    e.preventDefault();
+    if (!draggedRoleId || draggedRoleId === targetRoleId) {
+      setDraggedRoleId(null);
+      return;
+    }
+
+    // Only allow reordering custom roles
+    const draggedRole = allRoles.find(r => r.id === draggedRoleId);
+    const targetRole = allRoles.find(r => r.id === targetRoleId);
+    
+    if (draggedRole?.isDefault || targetRole?.isDefault) {
+      setDraggedRoleId(null);
+      return;
+    }
+
+    // Swap positions
+    try {
+      const draggedPos = draggedRole.position ?? 0;
+      const targetPos = targetRole.position ?? 0;
+      
+      if (currentServer) {
+        await updateDoc(doc(db, 'servers', currentServer, 'roles', draggedRoleId), { position: targetPos });
+        await updateDoc(doc(db, 'servers', currentServer, 'roles', targetRoleId), { position: draggedPos });
+    }
+  } catch (error) {
+      console.error('Error reordering roles:', error);
+    }
+    
+    setDraggedRoleId(null);
+  };
 
   // Group tabs by category
   const groupedTabs = ADMIN_TABS.reduce((acc, tab) => {
@@ -288,11 +384,11 @@ export const AdminPanel = ({ isOpen, onClose }) => {
                           <span 
                             className="text-xs px-2 py-0.5 rounded"
                             style={{
-                              backgroundColor: `${allRoles.find(r => r.name === user.role)?.color}20`,
-                              color: allRoles.find(r => r.name === user.role)?.color,
+                              backgroundColor: `${allRoles.find(r => r.name === (user.serverRole || user.role))?.color}20`,
+                              color: allRoles.find(r => r.name === (user.serverRole || user.role))?.color,
                             }}
                           >
-                            {user.role}
+                            {user.serverRole || user.role}
                           </span>
                           {user.isMuted && <span className="text-xs text-yellow-500">MUTED</span>}
                           {user.isBanned && <span className="text-xs text-red-500">BANNED</span>}
@@ -333,71 +429,143 @@ export const AdminPanel = ({ isOpen, onClose }) => {
       case 'roles':
         return (
           <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-dark-text">Roles</h1>
-            <p className="text-dark-muted">Create and manage custom roles for your server.</p>
+            <div>
+              <h1 className="text-2xl font-bold text-dark-text">Roles</h1>
+              <p className="text-dark-muted mt-1">Use roles to organize your members and customize permissions.</p>
+            </div>
             
-            {/* Create Role */}
-            <div className="bg-dark-bg rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Create New Role</h3>
-              <div className="flex gap-3">
-                <Input
-                  placeholder="Role name"
-                  value={newRole.name}
-                  onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
-                  className="flex-1"
-                />
-                <input
-                  type="color"
-                  value={newRole.color}
-                  onChange={(e) => setNewRole({ ...newRole, color: e.target.value })}
-                  className="w-12 h-10 rounded cursor-pointer border-0"
-                />
-                <Button onClick={handleCreateRole}>
-                  <MdAdd size={20} />
-                  Create
+            {/* Create Role Card */}
+            <div className="bg-dark-bg rounded-xl p-6 border border-dark-hover">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-brand-primary/20 flex items-center justify-center">
+                  <MdAdd className="text-brand-primary" size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-dark-text">Create New Role</h3>
+                  <p className="text-sm text-dark-muted">Add a custom role with a unique color</p>
+                </div>
+              </div>
+              
+              <div className="flex gap-4 items-end">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-dark-muted uppercase tracking-wide mb-2">Role Name</label>
+                  <Input
+                    placeholder="e.g. VIP, Helper, Supporter..."
+                    value={newRole.name}
+                    onChange={(e) => setNewRole({ ...newRole, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-dark-muted uppercase tracking-wide mb-2">Color</label>
+                  <div className="relative">
+                    <input
+                      type="color"
+                      value={newRole.color}
+                      onChange={(e) => setNewRole({ ...newRole, color: e.target.value })}
+                      className="w-14 h-10 rounded-lg cursor-pointer border-2 border-dark-hover hover:border-brand-primary transition-colors"
+                      style={{ backgroundColor: newRole.color }}
+                    />
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleCreateRole}
+                  disabled={!newRole.name.trim()}
+                  className="px-6"
+                >
+                  <MdAdd size={18} className="mr-1" />
+                  Create Role
                 </Button>
               </div>
             </div>
 
             {/* Roles List */}
-            <div className="bg-dark-bg rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">
-                Roles — {allRoles.length}
-              </h3>
-              <div className="space-y-2">
-                {allRoles.map((role) => (
+            <div className="bg-dark-bg rounded-xl border border-dark-hover overflow-hidden">
+              <div className="px-6 py-4 border-b border-dark-hover flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide">
+                  Roles — {allRoles.length}
+                </h3>
+                <span className="text-xs text-dark-muted">Drag custom roles to reorder hierarchy</span>
+              </div>
+              
+              <div className="divide-y divide-dark-hover">
+                {allRoles.map((role, index) => (
                   <div
                     key={role.id}
-                    className="flex items-center justify-between p-3 rounded-lg hover:bg-dark-hover transition-colors"
+                    draggable={!role.isDefault}
+                    onDragStart={(e) => handleRoleDragStart(e, role.id)}
+                    onDragOver={handleRoleDragOver}
+                    onDrop={(e) => handleRoleDrop(e, role.id)}
+                    className={cn(
+                      "group flex items-center justify-between px-6 py-4 transition-colors",
+                      !role.isDefault && "cursor-grab active:cursor-grabbing hover:bg-dark-sidebar/50",
+                      role.isDefault && "opacity-70",
+                      draggedRoleId === role.id && "opacity-50 bg-brand-primary/10"
+                    )}
                   >
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-4 h-4 rounded-full"
-                        style={{ backgroundColor: role.color }}
-                      />
-                      <span className="font-medium text-dark-text">{role.name}</span>
-                      {role.isDefault && (
-                        <span className="text-xs px-2 py-0.5 bg-dark-hover text-dark-muted rounded">
-                          Default
-                        </span>
+                    <div className="flex items-center gap-4">
+                      {/* Drag Handle (only for custom roles) */}
+                      {!role.isDefault && (
+                        <div className="text-dark-muted opacity-0 group-hover:opacity-100 transition-opacity">
+                          <MdDragHandle size={20} />
+                        </div>
                       )}
+                      
+                      {/* Role Color Indicator */}
+                      <div 
+                        className="w-5 h-5 rounded-full ring-2 ring-offset-2 ring-offset-dark-bg"
+                        style={{ backgroundColor: role.color, ringColor: role.color }}
+                      />
+                      
+                      {/* Role Info */}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span 
+                            className="font-semibold text-dark-text"
+                            style={{ color: role.color }}
+                          >
+                            {role.name}
+                          </span>
+                          {role.isDefault && (
+                            <span className="text-[10px] px-2 py-0.5 bg-dark-hover text-dark-muted rounded-full uppercase font-medium">
+                              System
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-dark-muted mt-0.5">
+                          {role.isDefault ? 'Default system role' : `Position: ${role.position ?? 0}`}
+                        </p>
+                      </div>
                     </div>
+                    
+                    {/* Actions */}
                     {!role.isDefault && (
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => setEditingRole(role)}>
-                          <MdEdit size={16} />
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="danger"
-                          onClick={() => setConfirmDialog({ type: 'role', data: role.id, name: role.name })}
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => setEditingRole(role)}
+                          className="p-2 rounded-lg hover:bg-dark-hover text-dark-muted hover:text-brand-primary transition-colors"
+                          title="Edit Role"
                         >
-                          <MdDelete size={16} />
-                        </Button>
+                          <MdEdit size={18} />
+                        </button>
+                        <button 
+                          onClick={() => setConfirmDialog({ type: 'role', data: role.id, name: role.name })}
+                          className="p-2 rounded-lg hover:bg-red-500/20 text-dark-muted hover:text-red-500 transition-colors"
+                          title="Delete Role"
+                        >
+                          <MdDelete size={18} />
+                        </button>
                       </div>
                     )}
                   </div>
                 ))}
+                
+                {allRoles.length === 0 && (
+                  <div className="px-6 py-12 text-center">
+                    <MdTag className="mx-auto text-dark-muted mb-3" size={40} />
+                    <p className="text-dark-muted">No roles created yet</p>
+                    <p className="text-xs text-dark-muted mt-1">Create your first role above!</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -629,44 +797,48 @@ export const AdminPanel = ({ isOpen, onClose }) => {
       </div>
 
       {/* Edit User Modal */}
-      {editingUser && (
-        <Modal
-          isOpen={!!editingUser}
-          onClose={() => setEditingUser(null)}
-          title="Edit User Role"
-          size="sm"
-        >
-          <div className="space-y-4">
-            <div>
-              <div className="text-sm text-dark-muted mb-1">User</div>
-              <div className="font-medium text-dark-text">{editingUser.displayName}</div>
-            </div>
-            <div>
-              <div className="text-sm text-dark-muted mb-2">Select Role</div>
-              <div className="space-y-2">
-                {allRoles.map((role) => (
-                  <button
-                    key={role.id}
-                    onClick={() => handleUpdateUserRole(editingUser.id, role.name)}
-                    className={cn(
-                      'w-full px-3 py-2 rounded-lg border text-left transition-all flex items-center gap-3',
-                      editingUser.role === role.name
-                        ? 'border-brand-primary bg-brand-primary/20'
-                        : 'border-dark-hover hover:bg-dark-hover'
-                    )}
-                  >
-                    <div 
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: role.color }}
-                    />
-                    <span className="text-dark-text">{role.name}</span>
-                  </button>
-                ))}
+      {editingUser && (() => {
+        // Get the current user from the live users array for real-time updates
+        const currentUserData = users.find(u => u.id === editingUser.id) || editingUser;
+        return (
+          <Modal
+            isOpen={!!editingUser}
+            onClose={() => setEditingUser(null)}
+            title="Edit User Role"
+            size="sm"
+          >
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm text-dark-muted mb-1">User</div>
+                <div className="font-medium text-dark-text">{currentUserData.displayName}</div>
+              </div>
+              <div>
+                <div className="text-sm text-dark-muted mb-2">Select Role</div>
+                <div className="space-y-2">
+                  {allRoles.map((role) => (
+                    <button
+                      key={role.id}
+                      onClick={() => handleUpdateUserRole(editingUser.id, role.name)}
+                      className={cn(
+                        'w-full px-3 py-2 rounded-lg border text-left transition-all flex items-center gap-3',
+                        (currentUserData.serverRole || currentUserData.role) === role.name
+                          ? 'border-brand-primary bg-brand-primary/20'
+                          : 'border-dark-hover hover:bg-dark-hover'
+                      )}
+                    >
+                      <div 
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: role.color }}
+                      />
+                      <span className="text-dark-text">{role.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* Edit Role Modal */}
       {editingRole && (

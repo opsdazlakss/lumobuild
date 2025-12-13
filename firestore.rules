@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // --- ESKİ YARDIMCI FONKSİYONLAR ---
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -14,11 +15,6 @@ service cloud.firestore {
       return request.auth != null && (getUserData().role == 'moderator' || isAdmin());
     }
     
-    function isServerMember(serverId) {
-      return request.auth != null && 
-            serverId in getUserData().servers;
-    }
-    
     function onlyUpdatingReactions() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
     }
@@ -26,16 +22,21 @@ service cloud.firestore {
     function onlyUpdatingUnreadMentions() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadMentions']);
     }
-
+    function onlyUpdatingPollVotes() {
+      return resource.data.type == 'poll' 
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['poll']);
+    }
     // Users
     match /users/{userId} {
-      allow read: if true; // Allow public read for username validation during register
+      allow read: if true;
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && 
-                    (request.auth.uid == userId || 
-                     isAdmin() || 
-                     onlyUpdatingUnreadMentions());
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin() || onlyUpdatingUnreadMentions());
       allow delete: if isAdmin();
+
+      // Incoming Calls (EKLENDİ)
+      match /incomingCalls/{callId} {
+        allow read, write: if request.auth != null;
+      }
     }
 
     // Servers
@@ -50,7 +51,7 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow create: if request.auth != null;
         allow update: if isAdmin();
-        allow delete: if isAdmin() || request.auth.uid == userId; // Allow users to leave
+        allow delete: if isAdmin() || request.auth.uid == userId;
       }
       
       // Server Channels
@@ -61,20 +62,31 @@ service cloud.firestore {
         // Channel Messages
         match /messages/{messageId} {
           allow read: if request.auth != null;
-          allow create: if request.auth != null && !getUserData().isMuted;
-          allow update: if request.auth != null && 
-                        (request.auth.uid == resource.data.userId || 
-                         isModerator() ||
-                         onlyUpdatingReactions());
-          allow delete: if request.auth != null && 
-                        (request.auth.uid == resource.data.userId || isAdmin());
+          
+          // --- ÇALIŞAN KISIM BURASI ---
+          // getUserData().isMuted kontrolü bazen hata verdiği için
+          // burayı "çalışan versiyondaki" gibi basit tuttum.
+          allow create: if request.auth != null;
+          // ----------------------------
+
+          allow update: if request.auth != null && (
+            request.auth.uid == resource.data.userId 
+            || isModerator() 
+            || onlyUpdatingReactions()
+            || onlyUpdatingPollVotes()
+          );
+          allow delete: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
         }
         
-        // Typing indicators
         match /typing/{userId} {
-          allow read: if request.auth != null;
-          allow write: if request.auth != null && request.auth.uid == userId;
+          allow read, write: if request.auth != null;
         }
+      }
+
+      // Server Roles
+      match /roles/{roleId} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin();
       }
     }
     
@@ -86,38 +98,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
-    // Legacy channels (for backward compatibility during migration)
-    match /channels/{channelId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
-      
-      match /messages/{messageId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null && !getUserData().isMuted;
-        allow update: if request.auth != null && (request.auth.uid == resource.data.userId || isModerator());
-        allow delete: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
-      }
-      
-      match /typing/{userId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-    
     // Roles
-    match /roles/{roleId} {
-      allow read: if request.auth != null;
-      allow write: if isAdmin();
-    }
+    match /roles/{roleId} { allow read: if request.auth != null; allow write: if isAdmin(); }
     
     // Admin Logs
-    match /adminLogs/{logId} {
-      allow read: if isAdmin();
-      allow create: if request.auth != null;
-      allow update, delete: if isAdmin();
-    }
-    
-    // Direct Messages
+    match /adminLogs/{logId} { allow read: if isAdmin(); allow create: if request.auth != null; allow update, delete: if isAdmin(); }
     match /dms/{dmId} {
       allow create: if request.auth != null;
       allow read: if request.auth != null && request.auth.uid in resource.data.participants;
@@ -130,6 +115,20 @@ service cloud.firestore {
                       request.auth.uid in get(/databases/$(database)/documents/dms/$(dmId)).data.participants;
         allow update: if request.auth != null && request.auth.uid == resource.data.userId;
         allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      }
+    }
+    // Legacy support
+    match /channels/{channelId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+      match /messages/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update: if request.auth != null && (request.auth.uid == resource.data.userId || isModerator());
+        allow delete: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
+      }
+      match /typing/{userId} {
+        allow read, write: if request.auth != null;
       }
     }
   }

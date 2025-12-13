@@ -153,7 +153,8 @@ export const DataProvider = ({ children }) => {
             // Also update profile data in real-time for online users
             displayName: data.displayName,
             photoUrl: data.photoUrl || data.photoURL,
-            bio: data.bio
+            bio: data.bio,
+            role: data.role, // Sync role changes in real-time
           });
         });
 

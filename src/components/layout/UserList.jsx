@@ -1,13 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getRoleBadgeColor } from '../../utils/helpers';
 import { cn } from '../../utils/helpers';
 import { UserProfileCard } from '../shared/UserProfileCard';
 import { StatusIndicator, getStatusConfig } from '../shared/StatusIndicator';
 import { isUserOnline as checkUserOnline } from '../../hooks/usePresence';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { useData } from '../../context/DataContext';
 
 export const UserList = ({ users, currentUserId, onStartDm }) => {
+  const { currentServer } = useData();
   const [selectedUser, setSelectedUser] = useState(null);
+  const [customRolesData, setCustomRolesData] = useState([]);
   
+  // Fetch custom roles with positions
+  useEffect(() => {
+    if (!currentServer || currentServer === 'home') {
+      setCustomRolesData([]);
+      return;
+    }
+
+    const q = query(collection(db, 'servers', currentServer, 'roles'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const rolesData = [];
+      snapshot.forEach((doc) => {
+        rolesData.push({ id: doc.id, ...doc.data() });
+      });
+      setCustomRolesData(rolesData);
+    });
+    return unsubscribe;
+  }, [currentServer]);
   
   // Online check: use lastSeen timestamp, treat invisible as offline
   const isUserOnline = (user) => {
@@ -29,7 +51,24 @@ export const UserList = ({ users, currentUserId, onStartDm }) => {
     return acc;
   }, {});
 
-  const roleOrder = ['admin', 'moderator', 'member'];
+  // Default roles with fixed positions (negative to always be on top)
+  const defaultRoles = [
+    { name: 'admin', position: -3 },
+    { name: 'moderator', position: -2 },
+    { name: 'member', position: -1 }
+  ];
+  
+  // Combine default roles with custom roles and sort by position
+  const allRolesWithPositions = [
+    ...defaultRoles,
+    ...customRolesData.map(r => ({ name: r.name, position: r.position ?? 999 }))
+  ];
+  
+  // Sort by position (lower = higher priority), filter to only roles with users
+  const roleOrder = allRolesWithPositions
+    .sort((a, b) => a.position - b.position)
+    .map(r => r.name)
+    .filter(roleName => groupedOnlineUsers[roleName]?.length > 0);
 
   const renderUser = (user) => {
     const online = isUserOnline(user);

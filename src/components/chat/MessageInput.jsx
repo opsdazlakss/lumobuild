@@ -152,11 +152,23 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const handleFileSelect = (e) => {
     processFileSelection(e.target.files?.[0]);
   };
+
+  // Check if any modal is open (they typically have fixed/absolute overlays with high z-index)
+  const isModalOpen = () => {
+    // Look for common modal indicators
+    return document.querySelector('[role="dialog"]') !== null ||
+           document.querySelector('.modal-overlay') !== null ||
+           document.body.style.overflow === 'hidden';
+  };
   
   // Drag and drop handlers
   const handleDragEnter = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Don't activate drag overlay if a modal is open
+    if (isModalOpen()) return;
+    
     dragCounterRef.current++;
     if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       setIsDragging(true);
@@ -182,6 +194,9 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     e.stopPropagation();
     setIsDragging(false);
     dragCounterRef.current = 0;
+    
+    // Don't process drop if a modal is open
+    if (isModalOpen()) return;
     
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {

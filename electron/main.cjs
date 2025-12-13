@@ -115,7 +115,9 @@ autoUpdater.on('error', (err) => {
 
 autoUpdater.on('download-progress', (progressObj) => {
   const percent = Math.round(progressObj.percent);
-  sendStatusToSplash(`Downloading update... ${percent}%`);
+  const transferred = (progressObj.transferred / 1024 / 1024).toFixed(1);
+  const total = (progressObj.total / 1024 / 1024).toFixed(1);
+  sendStatusToSplash(`Downloading update... ${transferred}/${total} MB (${percent}%)`);
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.webContents.send('download-progress', percent);
   }

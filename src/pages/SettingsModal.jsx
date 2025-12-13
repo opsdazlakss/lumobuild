@@ -7,13 +7,14 @@ import { StatusSelector } from '../components/shared/StatusSelector';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { MdPerson, MdSecurity, MdCircle, MdClose } from 'react-icons/md';
+import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo } from 'react-icons/md';
 
 // Settings categories
 const SETTINGS_TABS = [
   { id: 'account', label: 'My Account', icon: MdPerson, category: 'User Settings' },
   { id: 'status', label: 'Status', icon: MdCircle, category: 'User Settings' },
   { id: 'security', label: 'Privacy & Security', icon: MdSecurity, category: 'User Settings' },
+  { id: 'about', label: 'About', icon: MdInfo, category: 'App Settings' },
 ];
 
 export const SettingsModal = ({ isOpen, onClose }) => {
@@ -383,6 +384,60 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 >
                   {changingPassword ? 'Changing Password...' : 'Change Password'}
                 </Button>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'about':
+        return (
+          <div className="space-y-8">
+            <h1 className="text-2xl font-bold text-dark-text">About</h1>
+            
+            {/* App Info */}
+            <div className="bg-dark-bg rounded-lg p-6">
+              <h2 className="text-xl font-bold text-dark-text mb-2">Lumo Chat</h2>
+              <div className="space-y-4 text-dark-muted text-sm">
+                <p>
+                  A modern real-time chat application built for seamless communication.
+                </p>
+                
+                <div>
+                  <div className="font-semibold text-dark-text">Version</div>
+                  <div>1.0.0</div>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-dark-text">Developer</div>
+                  <div>Dazlakss</div>
+                </div>
+
+                <div>
+                  <div className="font-semibold text-dark-text">Tech Stack</div>
+                  <div>React, Firebase, TailwindCSS, Electron</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Acknowledgments */}
+            <div className="bg-dark-bg rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Acknowledgments</h3>
+              
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 p-3 bg-dark-sidebar rounded-lg border border-dark-hover">
+                   <div className="flex-1">
+                     <div className="text-dark-text font-medium">GIPHY</div>
+                     <div className="text-xs text-dark-muted">We use GIPHY for finding and sharing GIFs.</div>
+                     <a 
+                       href="https://giphy.com"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       className="mt-2 text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 block w-fit hover:opacity-80 transition-opacity"
+                     >
+                       Powered by GIPHY
+                     </a>
+                   </div>
+                </div>
               </div>
             </div>
           </div>

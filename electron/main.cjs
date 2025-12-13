@@ -1,5 +1,11 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, dialog } = require('electron');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
+const log = require('electron-log');
+
+// Configure logging
+log.transports.file.level = 'info';
+autoUpdater.logger = log;
 
 function createWindow() {
   // Create the browser window.
@@ -26,7 +32,7 @@ function createWindow() {
     // In development, load from Vite dev server
     mainWindow.loadURL('http://localhost:5173');
     // Open the DevTools.
-    // mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools();
     console.log('Running in development mode');
   } else {
     // In production, load the built index.html
@@ -35,9 +41,31 @@ function createWindow() {
   }
 }
 
+// Auto-updater events
+autoUpdater.on('update-available', () => {
+  log.info('Update available.');
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  log.info('Update downloaded.');
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Update Ready',
+    message: 'A new version of Lumo is ready. Restart now to apply?',
+    buttons: ['Restart', 'Later']
+  }).then((returnValue) => {
+    if (returnValue.response === 0) autoUpdater.quitAndInstall();
+  });
+});
+
 // This method will be called when Electron has finished initialization
 app.whenReady().then(() => {
   createWindow();
+  
+  // Check for updates (only in production)
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the

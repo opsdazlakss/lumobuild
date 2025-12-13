@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useToast } from '../../context/ToastContext';
-import { MdSend, MdClose, MdEmojiEmotions } from 'react-icons/md';
+import { MdSend, MdClose, MdEmojiEmotions, MdGif } from 'react-icons/md';
 import { EmojiPicker } from '../shared/EmojiPicker';
+import { GifPicker } from './GifPicker';
 
 export const MessageInput = ({ serverId, channelId, channel, userId, userProfile, userRole, users, replyingTo, onCancelReply }) => {
   const [message, setMessage] = useState('');
@@ -11,7 +12,9 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const [showMentions, setShowMentions] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
   const [mentionPosition, setMentionPosition] = useState(0);
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const inputRef = useRef(null);
   const { warning, error } = useToast();
 
@@ -27,6 +30,44 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     setMessage(newMessage);
     setShowEmojiPicker(false);
     inputRef.current?.focus();
+  };
+
+  const handleGifSelect = async (gifUrl) => {
+    setShowGifPicker(false);
+    
+    // Check permissions
+    if (!message.trim() && !canSendMessage) return; // Basic check, though GIF is just a link
+    
+    // Send immediately as a standalone message
+    try {
+      setSending(true);
+      const messageData = {
+        text: gifUrl,
+        userId: userId,
+        timestamp: serverTimestamp(),
+        mentions: [],
+        replyTo: null
+      };
+
+      if (serverId) {
+        await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), messageData);
+      } else {
+        await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
+        await updateDoc(doc(db, 'dms', channelId), {
+          lastMessage: {
+            text: 'GIF',
+            userId: userId,
+            timestamp: serverTimestamp()
+          },
+          updatedAt: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error('Error sending GIF:', err);
+      error('Failed to send GIF');
+    } finally {
+      setSending(false);
+    }
   };
 
   // Detect @ mentions
@@ -281,6 +322,18 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
             onClose={() => setShowEmojiPicker(false)}
           />
         )}
+
+        {/* GIF Picker */}
+        {showGifPicker && (
+          <div className="absolute bottom-full right-0 mb-4 w-[400px] h-[450px] shadow-2xl rounded-lg z-50">
+             {/* Backdrop to close */}
+             <div 
+               className="fixed inset-0 z-[-1]" 
+               onClick={() => setShowGifPicker(false)}
+             />
+             <GifPicker onSelect={handleGifSelect} />
+          </div>
+        )}
         
         <input
           ref={inputRef}
@@ -316,6 +369,18 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           title="Add emoji"
         >
           <MdEmojiEmotions size={24} />
+        </button>
+
+        {/* GIF Button */}
+        <button
+          type="button"
+          onClick={() => setShowGifPicker(!showGifPicker)}
+          className="absolute right-20 top-1/2 -translate-y-1/2
+                     text-dark-muted hover:text-brand-primary
+                     transition-colors border-2 border-current rounded px-1 text-[10px] font-bold h-6 flex items-center justify-center"
+          title="Add GIF"
+        >
+          GIF
         </button>
         
         <button

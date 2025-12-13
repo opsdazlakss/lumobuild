@@ -6,6 +6,7 @@ import { FaTwitter, FaSpotify, FaYoutube } from 'react-icons/fa';
 const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 const SPOTIFY_REGEX = /(?:https?:\/\/)?(?:open\.)?spotify\.com\/(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]+)/;
 const TWITTER_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/(\w+)\/status\/(\d+)/;
+export const IMAGE_REGEX = /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i;
 
 // Extract video ID from YouTube URL
 const getYouTubeId = (url) => {
@@ -30,6 +31,7 @@ export const detectLinkType = (url) => {
   if (YOUTUBE_REGEX.test(url)) return 'youtube';
   if (SPOTIFY_REGEX.test(url)) return 'spotify';
   if (TWITTER_REGEX.test(url)) return 'twitter';
+  if (IMAGE_REGEX.test(url)) return 'image';
   return 'generic';
 };
 
@@ -155,6 +157,25 @@ const SpotifyEmbed = ({ url }) => {
   );
 };
 
+// Image Embed Component
+const ImageEmbed = ({ url }) => {
+  return (
+    <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-dark-hover bg-dark-sidebar">
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block cursor-pointer">
+        <img 
+          src={url} 
+          alt="Attachment"
+          className="w-full h-auto max-h-[400px] object-contain bg-black/50"
+          loading="lazy"
+          onError={(e) => {
+            e.target.style.display = 'none';
+          }}
+        />
+      </a>
+    </div>
+  );
+};
+
 // Twitter/X Embed Component
 const TwitterEmbed = ({ url }) => {
   const containerRef = useRef(null);
@@ -272,6 +293,8 @@ export const LinkPreview = ({ url }) => {
       return <SpotifyEmbed url={url} />;
     case 'twitter':
       return <TwitterEmbed url={url} />;
+    case 'image':
+      return <ImageEmbed url={url} />;
     default:
       return <GenericLinkCard url={url} />;
   }

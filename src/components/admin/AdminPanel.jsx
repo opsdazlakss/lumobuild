@@ -28,6 +28,8 @@ export const AdminPanel = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('users');
   const [editingUser, setEditingUser] = useState(null);
   const [newChannelName, setNewChannelName] = useState('');
+  const [newChannelDesc, setNewChannelDesc] = useState('');
+  const [editingChannel, setEditingChannel] = useState(null);
   const [customRoles, setCustomRoles] = useState([]);
   const [editingRole, setEditingRole] = useState(null);
   const [newRole, setNewRole] = useState({ name: '', color: '#5865f2' });
@@ -171,13 +173,23 @@ export const AdminPanel = ({ isOpen, onClose }) => {
       await addDoc(collection(db, 'servers', currentServer, 'channels'), {
         name: newChannelName.trim(),
         type: 'text',
-        description: '',
+        description: newChannelDesc.trim(),
         position: channels.length,
         createdAt: serverTimestamp(),
       });
       setNewChannelName('');
+      setNewChannelDesc('');
     } catch (error) {
       console.error('Error creating channel:', error);
+    }
+  };
+
+  const handleUpdateChannel = async (channelId, updates) => {
+    try {
+      await updateDoc(doc(db, 'servers', currentServer, 'channels', channelId), updates);
+      setEditingChannel(null);
+    } catch (error) {
+      console.error('Error updating channel:', error);
     }
   };
 
@@ -401,13 +413,19 @@ export const AdminPanel = ({ isOpen, onClose }) => {
             <div className="bg-dark-bg rounded-lg p-4">
               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Create New Channel</h3>
               <div className="flex gap-3">
-                <Input
-                  placeholder="Channel name"
-                  value={newChannelName}
-                  onChange={(e) => setNewChannelName(e.target.value)}
-                  className="flex-1"
-                />
-                <Button onClick={handleCreateChannel}>
+                <div className="flex-1 space-y-2">
+                  <Input
+                    placeholder="Channel name (#general)"
+                    value={newChannelName}
+                    onChange={(e) => setNewChannelName(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Channel topic/description (Optional)"
+                    value={newChannelDesc}
+                    onChange={(e) => setNewChannelDesc(e.target.value)}
+                  />
+                </div>
+                <Button onClick={handleCreateChannel} className="h-fit mt-auto">
                   <MdAdd size={20} />
                   Create
                 </Button>
@@ -429,7 +447,12 @@ export const AdminPanel = ({ isOpen, onClose }) => {
                       <FaHashtag className="text-dark-muted" />
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-dark-text">{channel.name}</span>
+                      <span className="font-medium text-dark-text">{channel.name}</span>
+                          {channel.description && (
+                            <span className="text-xs text-dark-muted ml-2 truncate max-w-[200px]">
+                              {channel.description}
+                            </span>
+                          )}
                           {channel.locked && (
                             <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-500 flex items-center gap-1">
                               <MdSettings size={12} />
@@ -443,6 +466,9 @@ export const AdminPanel = ({ isOpen, onClose }) => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setEditingChannel(channel)}>
+                        <MdEdit size={16} />
+                      </Button>
                       <Button
                         size="sm"
                         variant={channel.locked ? 'warning' : 'secondary'}
@@ -678,6 +704,39 @@ export const AdminPanel = ({ isOpen, onClose }) => {
               onClick={() => handleUpdateRole(editingRole.id, {
                 name: editingRole.name,
                 color: editingRole.color,
+              })}
+            >
+              Save Changes
+            </Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Channel Modal */}
+      {editingChannel && (
+        <Modal
+          isOpen={!!editingChannel}
+          onClose={() => setEditingChannel(null)}
+          title="Edit Channel"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <Input
+              label="Channel Name"
+              value={editingChannel.name}
+              onChange={(e) => setEditingChannel({ ...editingChannel, name: e.target.value })}
+            />
+            <Input
+              label="Channel Topic / Description"
+              value={editingChannel.description || ''}
+              onChange={(e) => setEditingChannel({ ...editingChannel, description: e.target.value })}
+            />
+            <Button
+              variant="primary"
+              className="w-full"
+              onClick={() => handleUpdateChannel(editingChannel.id, {
+                name: editingChannel.name,
+                description: editingChannel.description,
               })}
             >
               Save Changes

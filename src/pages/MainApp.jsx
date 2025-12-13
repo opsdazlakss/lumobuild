@@ -162,8 +162,13 @@ export const MainApp = () => {
               <div className="h-12 px-4 flex items-center justify-between border-b border-dark-hover shadow-sm bg-dark-bg">
                 <div className="flex items-center gap-2">
                   <FaHashtag className="text-dark-muted" />
-                  <h2 className="font-semibold text-dark-text">
-                    {selectedChannel?.name || 'Select a channel'}
+                  <h2 className="font-semibold text-dark-text flex items-center">
+                    <span>{selectedChannel?.name || 'Select a channel'}</span>
+                    {selectedChannel?.description && (
+                      <span className="ml-4 text-sm text-dark-muted font-normal border-l border-dark-muted/30 pl-4 truncate max-w-md">
+                        {selectedChannel.description}
+                      </span>
+                    )}
                   </h2>
                 </div>
                 <div className="flex items-center gap-3">

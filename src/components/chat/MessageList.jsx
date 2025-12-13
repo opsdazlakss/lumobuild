@@ -12,7 +12,7 @@ import { playNotificationSound, isMentioned } from '../../utils/notificationSoun
 import { MarkdownText } from '../../utils/markdown.jsx';
 import { ReactionPicker } from './ReactionPicker';
 import { StatusIndicator } from '../shared/StatusIndicator';
-import { MessageLinkPreviews } from '../shared/LinkPreview';
+import { MessageLinkPreviews, detectLinkType, extractUrls } from '../shared/LinkPreview';
 
 export const MessageList = ({ serverId, channelId, users, currentUserId, userRole, onReply, onMessagesChange }) => {
   const [messages, setMessages] = useState([]);
@@ -564,20 +564,32 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                         <span>Pinned</span>
                       </div>
                     )}
-                    <div className="text-dark-text whitespace-pre-wrap break-all">
-                      <MarkdownText
-                        onMentionClick={(username) => {
-                          const user = users.find(u => 
-                            u.displayName?.toLowerCase() === username.toLowerCase()
-                          );
-                          if (user) {
-                            setSelectedUserProfile(user);
-                          }
-                        }}
-                      >
-                        {message.text}
-                      </MarkdownText>
-                    </div>
+                    
+                    {/* Hide text if it is just a rich media URL (YouTube, Spotify, Twitter, Image) to prevent duplication with preview. Keep text for generic links or mixed content. */}
+                    {(() => {
+                      const urls = extractUrls(message.text);
+                      const isSingleRichLink = 
+                        urls.length === 1 && 
+                        message.text.trim() === urls[0] && 
+                        ['youtube', 'spotify', 'twitter', 'image'].includes(detectLinkType(urls[0]));
+                      
+                      return !isSingleRichLink && (
+                        <div className="text-dark-text whitespace-pre-wrap break-all">
+                          <MarkdownText
+                            onMentionClick={(username) => {
+                              const user = users.find(u => 
+                                u.displayName?.toLowerCase() === username.toLowerCase()
+                              );
+                              if (user) {
+                                setSelectedUserProfile(user);
+                              }
+                            }}
+                          >
+                            {message.text}
+                          </MarkdownText>
+                        </div>
+                      );
+                    })()}
                     
                     {/* Link Previews (YouTube, Spotify, Twitter, etc.) */}
                     <MessageLinkPreviews text={message.text} />

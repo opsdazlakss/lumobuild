@@ -2,8 +2,10 @@ name: Build Lumo
 
 on:
   push:
+    branches:
+      - main  # Build on every push to main
     tags:
-      - 'v*' # Trigger on version tags like v1.0.0
+      - 'v*'  # Also trigger on version tags for releases
   workflow_dispatch: # Allow manual trigger
 
 jobs:
@@ -37,6 +39,7 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_GIPHY_API_KEY: ${{ secrets.VITE_GIPHY_API_KEY }}
       
       - name: Upload artifacts (Windows)
         if: matrix.os == 'windows-latest'

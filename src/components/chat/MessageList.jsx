@@ -11,6 +11,7 @@ import { MdDelete, MdEdit, MdCheck, MdClose, MdMoreVert, MdReply, MdAddReaction,
 import { playNotificationSound, isMentioned } from '../../utils/notificationSound';
 import { MarkdownText } from '../../utils/markdown.jsx';
 import { ReactionPicker } from './ReactionPicker';
+import { PollDisplay } from './PollDisplay';
 import { StatusIndicator } from '../shared/StatusIndicator';
 import { MessageLinkPreviews, detectLinkType, extractUrls } from '../shared/LinkPreview';
 
@@ -568,12 +569,21 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                     {/* Hide text if it is just a rich media URL (YouTube, Spotify, Twitter, Image) to prevent duplication with preview. Keep text for generic links or mixed content. */}
                     {(() => {
                       const urls = extractUrls(message.text);
-                      const isSingleRichLink = 
-                        urls.length === 1 && 
-                        message.text.trim() === urls[0] && 
-                        ['youtube', 'spotify', 'twitter', 'image'].includes(detectLinkType(urls[0]));
+                      let displayText = message.text;
                       
-                      return !isSingleRichLink && (
+                      // Identify rich media URLs that are shown in previews
+                      const richUrls = urls.filter(url => 
+                        ['youtube', 'spotify', 'twitter', 'image'].includes(detectLinkType(url))
+                      );
+
+                      // Remove those URLs from the display text
+                      richUrls.forEach(url => {
+                        displayText = displayText.replace(url, '');
+                      });
+
+                      displayText = displayText.trim();
+                      
+                      return displayText.length > 0 && (
                         <div className="text-dark-text whitespace-pre-wrap break-all">
                           <MarkdownText
                             onMentionClick={(username) => {
@@ -585,7 +595,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                               }
                             }}
                           >
-                            {message.text}
+                            {displayText}
                           </MarkdownText>
                         </div>
                       );
@@ -593,6 +603,17 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                     
                     {/* Link Previews (YouTube, Spotify, Twitter, etc.) */}
                     <MessageLinkPreviews text={message.text} />
+                    
+                    {/* Poll Display */}
+                    {message.type === 'poll' && (
+                      <PollDisplay
+                        message={message}
+                        currentUserId={currentUserId}
+                        serverId={serverId}
+                        channelId={channelId}
+                        users={users}
+                      />
+                    )}
                     
                     {/* Reactions Display */}
                     {message.reactions && Object.keys(message.reactions).length > 0 && (

@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useToast } from '../../context/ToastContext';
-import { MdSend, MdClose, MdEmojiEmotions, MdGif } from 'react-icons/md';
+import { MdSend, MdClose, MdEmojiEmotions, MdGif, MdPoll, MdImage, MdAddCircle } from 'react-icons/md';
 import { EmojiPicker } from '../shared/EmojiPicker';
 import { GifPicker } from './GifPicker';
+import { PollCreator } from './PollCreator';
+import { uploadToImgBB } from '../../services/imgbb';
 
 export const MessageInput = ({ serverId, channelId, channel, userId, userProfile, userRole, users, replyingTo, onCancelReply }) => {
   const [message, setMessage] = useState('');
@@ -15,6 +17,15 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [showPollCreator, setShowPollCreator] = useState(false);
+  const [uploadState, setUploadState] = useState({ uploading: false, progress: 0, speed: '' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [imageCaption, setImageCaption] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+  const fileInputRef = useRef(null);
   const inputRef = useRef(null);
   const { warning, error } = useToast();
 
@@ -67,6 +78,180 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
       error('Failed to send GIF');
     } finally {
       setSending(false);
+    }
+  };
+
+  // Handle poll submission
+  const handlePollSubmit = async (pollData) => {
+    if (!canSendMessage) return;
+    
+    try {
+      setSending(true);
+      const messageData = {
+        type: 'poll',
+        text: pollData.question,
+        poll: {
+          question: pollData.question,
+          options: pollData.options,
+          votes: {},
+          multipleChoice: pollData.multipleChoice,
+          anonymous: pollData.anonymous
+        },
+        userId: userId,
+        timestamp: serverTimestamp(),
+        mentions: []
+      };
+
+      if (serverId) {
+        await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), messageData);
+      } else {
+        await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
+        await updateDoc(doc(db, 'dms', channelId), {
+          lastMessage: {
+            text: `📊 Poll: ${pollData.question}`,
+            userId: userId,
+            timestamp: serverTimestamp()
+          },
+          updatedAt: serverTimestamp()
+        });
+      }
+    } catch (err) {
+      console.error('Error creating poll:', err);
+      error('Failed to create poll');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const processFileSelection = (file) => {
+    if (!file) return;
+
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      error('Please select an image file');
+      return;
+    }
+
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      error('Image size must be less than 10MB');
+      return;
+    }
+
+    // Create preview
+    const url = URL.createObjectURL(file);
+    setSelectedFile(file);
+    setPreviewUrl(url);
+    setImageCaption('');
+    setShowPlusMenu(false);
+    
+    // Reset input so same file can be selected again if cancelled
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  const handleFileSelect = (e) => {
+    processFileSelection(e.target.files?.[0]);
+  };
+  
+  // Drag and drop handlers
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFileSelection(files[0]);
+    }
+  };
+
+  // Add global drag listeners
+  useEffect(() => {
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
+  const handleCancelPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setImageCaption('');
+  };
+
+  const handleUploadAndSend = async () => {
+    if (!selectedFile) return;
+
+    try {
+      setUploadState({ uploading: true, progress: 0, speed: '0 KB/s' });
+      
+      const imageUrl = await uploadToImgBB(selectedFile, (progress, speed) => {
+        setUploadState({ uploading: true, progress, speed });
+      });
+      
+      // Send message with image URL and caption
+      const messageText = imageCaption.trim() ? `${imageUrl}\n${imageCaption}` : imageUrl;
+      
+      const messageData = {
+        text: messageText,
+        userId: userId,
+        timestamp: serverTimestamp(),
+        mentions: [],
+        replyTo: null
+      };
+
+      if (serverId) {
+        await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), messageData);
+      } else {
+        await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
+        await updateDoc(doc(db, 'dms', channelId), {
+          lastMessage: {
+            text: '📷 Image',
+            userId: userId,
+            timestamp: serverTimestamp()
+          },
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      handleCancelPreview(); // Cleanup
+    } catch (err) {
+      console.error('Error uploading image:', err);
+      error('Failed to upload image');
+    } finally {
+      setUploadState({ uploading: false, progress: 0, speed: '' });
     }
   };
 
@@ -323,6 +508,92 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           />
         )}
 
+        {/* Upload Progress Bar */}
+        {uploadState.uploading && (
+          <div className="absolute -top-12 left-0 right-0 bg-dark-sidebar border border-dark-hover rounded-lg p-2 shadow-lg animate-fade-in-up z-50">
+            <div className="flex items-center justify-between text-xs text-dark-text mb-1">
+              <span className="font-semibold">Uploading Image...</span>
+              <span className="text-dark-muted">{Math.round(uploadState.progress)}% • {uploadState.speed}</span>
+            </div>
+            <div className="h-1.5 bg-dark-hover rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-brand-primary transition-all duration-200 ease-out"
+                style={{ width: `${uploadState.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Image Preview Modal */}
+        {selectedFile && previewUrl && (
+          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+            <div className="bg-dark-bg border border-dark-hover rounded-lg shadow-2xl max-w-lg w-full overflow-hidden flex flex-col p-4">
+              <h3 className="text-dark-text font-semibold mb-4 flex items-center gap-2">
+                <MdImage className="text-brand-primary" />
+                Upload Image
+              </h3>
+              
+              <div className="flex-1 w-full bg-black/50 rounded-lg overflow-hidden flex items-center justify-center mb-4 border border-dark-hover min-h-[200px] max-h-[400px]">
+                <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+              </div>
+
+              <input
+                type="text"
+                value={imageCaption}
+                onChange={(e) => setImageCaption(e.target.value)}
+                placeholder="Add a caption... (optional)"
+                className="w-full bg-dark-input text-dark-text px-4 py-2 rounded-lg border border-dark-hover focus:border-brand-primary outline-none mb-4"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !uploadState.uploading) handleUploadAndSend();
+                }}
+              />
+
+              <div className="flex justify-between items-center">
+                <button
+                  onClick={handleCancelPreview}
+                  className="px-4 py-2 text-dark-text hover:text-dark-muted transition-colors font-medium"
+                  disabled={uploadState.uploading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadAndSend}
+                  className="px-6 py-2 bg-brand-primary hover:bg-brand-secondary text-white rounded-md transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  disabled={uploadState.uploading}
+                >
+                  {uploadState.uploading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <MdSend size={18} />
+                      Send
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              {/* Progress UI in Modal */}
+              {uploadState.uploading && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs text-dark-muted mb-1">
+                    <span>{uploadState.speed}</span>
+                    <span>{Math.round(uploadState.progress)}%</span>
+                  </div>
+                  <div className="h-1 bg-dark-hover rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-brand-primary transition-all duration-200"
+                      style={{ width: `${uploadState.progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* GIF Picker */}
         {showGifPicker && (
           <div className="absolute bottom-full right-0 mb-4 w-[400px] h-[450px] shadow-2xl rounded-lg z-50">
@@ -350,20 +621,92 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
               }
             }
           }}
+          onPaste={async (e) => {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+              if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault();
+                processFileSelection(items[i].getAsFile());
+                break;
+              }
+            }
+          }}
           placeholder={!canSendMessage ? lockMessage : (userProfile?.isMuted ? 'You are muted' : 'Type a message...')}
-          disabled={sending || userProfile?.isMuted || !canSendMessage}
-          className="w-full bg-dark-input text-dark-text px-4 py-3 pr-20 rounded-lg
+          disabled={sending || userProfile?.isMuted || !canSendMessage || selectedFile !== null}
+          className="w-full bg-dark-input text-dark-text px-12 py-3 pr-24 rounded-lg
                      border border-transparent focus:border-brand-primary
                      outline-none transition-colors duration-200
                      placeholder:text-dark-muted
                      disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+
+        {/* Drag Overlay */}
+        {isDragging && (
+          <div className="fixed inset-0 z-[200] bg-brand-primary/90 flex flex-col items-center justify-center animate-fade-in pointer-events-none">
+            <div className="bg-white/10 p-8 rounded-full mb-6">
+              <MdImage size={64} className="text-white animate-bounce" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Drop your file here</h2>
+            <p className="text-white/80">to upload instantly</p>
+          </div>
+        )}
+
+        {/* Plus Button Menu */}
+        <div className="absolute left-3 top-0 bottom-0 flex items-center plus-menu-container"> {/* Changed from absolute centering to flex centering */}
+          <button
+            type="button"
+            onClick={() => setShowPlusMenu(!showPlusMenu)}
+            className={`text-dark-muted hover:text-brand-primary transition-colors flex items-center justify-center ${showPlusMenu ? 'text-brand-primary' : ''}`}
+            title="Add attachment"
+            disabled={!canSendMessage}
+          >
+            <MdAddCircle size={26} />
+          </button>
+
+          {showPlusMenu && (
+            <div className="absolute bottom-full left-0 mb-2 w-48 bg-dark-sidebar border border-dark-hover rounded-lg shadow-xl overflow-hidden z-50 animate-fade-in-up">
+              <button
+                type="button"
+                onClick={() => {
+                  fileInputRef.current?.click();
+                  setShowPlusMenu(false);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-hover text-left transition-colors"
+              >
+                <MdImage className="text-green-400" size={20} />
+                <span className="text-sm text-dark-text font-medium">Upload Image</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPollCreator(true);
+                  setShowPlusMenu(false);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-hover text-left transition-colors"
+                disabled={!serverId} // Polls usually in servers, but updated logic allows DMs too. Assuming DMs ok.
+              >
+                <MdPoll className="text-brand-primary" size={20} />
+                <span className="text-sm text-dark-text font-medium">Create Poll</span>
+              </button>
+            </div>
+          )}
+        </div>
+        
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          accept="image/*"
+          className="hidden"
         />
         
         {/* Emoji Button */}
         <button
           type="button"
           onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-          className="absolute right-12 top-1/2 -translate-y-1/2
+          className="absolute right-14 top-1/2 -translate-y-1/2
                      text-dark-muted hover:text-brand-primary
                      transition-colors"
           title="Add emoji"
@@ -375,7 +718,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
         <button
           type="button"
           onClick={() => setShowGifPicker(!showGifPicker)}
-          className="absolute right-20 top-1/2 -translate-y-1/2
+          className="absolute right-24 top-1/2 -translate-y-1/2
                      text-dark-muted hover:text-brand-primary
                      transition-colors border-2 border-current rounded px-1 text-[10px] font-bold h-6 flex items-center justify-center"
           title="Add GIF"
@@ -393,6 +736,14 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           <MdSend size={24} />
         </button>
       </form>
+
+      {/* Poll Creator Modal */}
+      {showPollCreator && (
+        <PollCreator
+          onSubmit={handlePollSubmit}
+          onClose={() => setShowPollCreator(false)}
+        />
+      )}
     </div>
   );
 };

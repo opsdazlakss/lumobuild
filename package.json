@@ -1,7 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-  "version": "1.1.5",
+  "version": "1.1.6",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -48,7 +48,7 @@
     "win": {
       "target": "nsis",
       "icon": "public/lumo-logo.png",
-      "artifactName": "LumoSetup_win.${ext}"
+      "artifactName": "LumoSetup_win-${version}.${ext}"
     },
     "mac": {
       "target": "dmg",
@@ -59,13 +59,13 @@
         "NSMicrophoneUsageDescription": "Lumo needs access to your microphone for voice and video calls.",
         "NSScreenCaptureUsageDescription": "Lumo needs access to share your screen."
       },
-      "artifactName": "LumoSetup_mac.${ext}"
+      "artifactName": "LumoSetup_mac-${version}.${ext}"
     },
     "linux": {
       "target": "AppImage",
       "icon": "public/lumo-logo.png",
       "category": "Network",
-      "artifactName": "LumoSetup_linux.${ext}"
+      "artifactName": "LumoSetup_linux-${version}.${ext}"
     },
     "publish": [
       {

@@ -442,6 +442,16 @@ export const MainApp = () => {
           userId={currentUser?.uid}
           onSuccess={(serverId) => setCurrentServer(serverId)}
         />
+
+        {showUpdateModal && (
+          <UpdateModal
+            isOpen={showUpdateModal}
+            onClose={() => !updateData?.forceUpdate && setShowUpdateModal(false)}
+            version={updateData?.version}
+            downloadUrl={updateData?.downloadUrl}
+            forceUpdate={updateData?.forceUpdate}
+          />
+        )}
       </div>
     </CallProvider>
   );

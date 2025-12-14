@@ -286,17 +286,18 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
       
       if (userReactions.includes(currentUserId)) {
         // Remove reaction
-        reactions[emoji] = userReactions.filter(id => id !== currentUserId);
-        if (reactions[emoji].length === 0) delete reactions[emoji];
+        const updatedUsers = userReactions.filter(id => id !== currentUserId);
+        if (updatedUsers.length === 0) {
+          delete reactions[emoji];
+        } else {
+          reactions[emoji] = updatedUsers;
+        }
       } else {
-        // Remove user from all other emojis first (one reaction per user)
-        Object.keys(reactions).forEach(key => {
-          reactions[key] = reactions[key].filter(id => id !== currentUserId);
-          if (reactions[key].length === 0) delete reactions[key];
-        });
+        // Allow multiple reactions per user (standard behavior)
+        // If we wanted single reaction, we would remove from others here
         
         // Add reaction to this emoji
-        reactions[emoji] = [currentUserId];
+        reactions[emoji] = [...userReactions, currentUserId];
       }
       
       const docRef = serverId 

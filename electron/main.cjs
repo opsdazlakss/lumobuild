@@ -7,7 +7,14 @@ const log = require('electron-log');
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    // ... (existing config) ...
+    width: 1280,
+    height: 720,
+    minWidth: 940,
+    minHeight: 500,
+    title: 'Lumo',
+    frame: true,
+    show: false, // Don't show until ready
+    icon: path.join(__dirname, '../public/lumo-logo.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -23,12 +30,32 @@ function createMainWindow() {
           callback({ video: sources[0], audio: 'loopback' });
       } else {
           // No screen found
-          callback(null);
+          callback({ video: null, audio: null });
       }
     }).catch(err => {
       console.error('Screen capture error:', err);
-      callback(null);
+      callback({ video: null, audio: null });
     });
+  });
+
+  mainWindow.setMenu(null);
+
+  const isDev = !app.isPackaged;
+  
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+
+  // Show main window and close splash when ready
+  mainWindow.once('ready-to-show', () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close();
+    }
+    mainWindow.maximize(); // Start maximized
+    mainWindow.show();
   });
 }
 // Configure logging

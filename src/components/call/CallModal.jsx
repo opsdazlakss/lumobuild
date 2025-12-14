@@ -170,7 +170,7 @@ export const CallModal = () => {
 
       {/* Controls Bar - Floating Overlay */}
       <div className={cn(
-          "absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 p-3 bg-gray-900/80 backdrop-blur-md rounded-2xl border border-gray-700 shadow-xl transition-opacity duration-300 hover:opacity-100",
+          "absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 z-50 flex flex-wrap justify-center items-center gap-2 md:gap-4 p-2 md:p-3 bg-gray-900/80 backdrop-blur-md rounded-xl md:rounded-2xl border border-gray-700 shadow-xl transition-opacity duration-300 hover:opacity-100 w-[95%] md:w-auto max-w-screen-sm",
           isMinimized && "hidden",
       )}>
          <button 

@@ -240,8 +240,18 @@ export const MainApp = () => {
             selectedDm ? (
               <DMView dmId={selectedDm.id} dms={dms} />
             ) : (
-              <div className="flex-1 flex items-center justify-center text-dark-muted">
-                Select a conversation to start chatting
+              <div className="flex-1 flex flex-col items-center justify-center text-dark-muted relative">
+                {/* Mobile Menu Button for Empty State */}
+                <button
+                  onClick={() => setShowMobileSidebar(true)}
+                  className="absolute top-4 left-4 md:hidden p-2 text-dark-muted hover:text-dark-text"
+                >
+                  <MdMenu size={32} />
+                </button>
+                <div className="text-center">
+                  <p className="mb-2 text-lg">👋 Welcome!</p>
+                  <p>Select a conversation to start chatting</p>
+                </div>
               </div>
             )
           ) : (

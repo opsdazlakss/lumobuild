@@ -43,6 +43,57 @@ export const MainApp = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateData, setUpdateData] = useState(null);
 
+  // Check for updates on mount (mobile only)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const checkUpdate = async () => {
+      try {
+        const docRef = doc(db, 'system', 'app_version');
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const currentVersion = pkg.version;
+          const remoteVersion = data.android;
+          
+          // Debugging Info (Temporary alert to verify logic on phone)
+          // alert(`V: ${currentVersion} -> ${remoteVersion}`);
+          
+          if (remoteVersion && remoteVersion !== currentVersion) {
+            const v1 = currentVersion.split('.').map(Number);
+            const v2 = remoteVersion.split('.').map(Number);
+            
+            let hasUpdate = false;
+            for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+              const num1 = v1[i] || 0;
+              const num2 = v2[i] || 0;
+              if (num2 > num1) {
+                hasUpdate = true;
+                break;
+              } else if (num2 < num1) {
+                break;
+              }
+            }
+
+            if (hasUpdate) {
+              setUpdateData({
+                version: remoteVersion,
+                downloadUrl: data.downloadUrl,
+                forceUpdate: data.forceUpdate || false
+              });
+              setShowUpdateModal(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check for updates:', err);
+      }
+    };
+
+    checkUpdate();
+  }, []);
+
   // Auto-clear unread mentions...
   useEffect(() => {
     if (!currentUser || !currentServer || !unreadMentions) return;

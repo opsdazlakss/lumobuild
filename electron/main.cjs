@@ -97,43 +97,7 @@ function createSplashWindow() {
   });
 }
 
-function createMainWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 720,
-    minWidth: 940,
-    minHeight: 500,
-    title: 'Lumo',
-    frame: true,
-    show: false, // Don't show until ready
-    icon: path.join(__dirname, '../public/lumo-logo.png'),
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-    backgroundColor: '#2c2b31',
-  });
 
-  mainWindow.setMenu(null);
-
-  const isDev = !app.isPackaged;
-  
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-  }
-
-  // Show main window and close splash when ready
-  mainWindow.once('ready-to-show', () => {
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.close();
-    }
-    mainWindow.maximize(); // Start maximized
-    mainWindow.show();
-  });
-}
 
 function sendStatusToSplash(message) {
   if (splashWindow && !splashWindow.isDestroyed()) {

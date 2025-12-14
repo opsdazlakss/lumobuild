@@ -36,7 +36,11 @@ export const JoinServerModal = ({ isOpen, onClose, userId, onSuccess }) => {
         return;
       }
 
-      if (invite.uses >= invite.maxUses && !invite.isUnlimited) {
+      // Check if code is unlimited (explicit flag OR maxUses = -1)
+      const isUnlimited = invite.isUnlimited === true || invite.maxUses === -1;
+
+      // Validate usage limit if not unlimited
+      if (!isUnlimited && invite.uses >= invite.maxUses) {
         error('This invite code has reached its usage limit');
         return;
       }
@@ -65,7 +69,7 @@ export const JoinServerModal = ({ isOpen, onClose, userId, onSuccess }) => {
       };
       
       // Only deactivate if not unlimited
-      if (!invite.isUnlimited) {
+      if (!isUnlimited) {
         updateData.isActive = false;
       }
 

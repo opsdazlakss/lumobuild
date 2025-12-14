@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { cn, formatTimestamp } from '../../utils/helpers';
-import { MdClose } from 'react-icons/md';
+import { MdClose, MdDelete } from 'react-icons/md';
 
-const DMListItem = ({ dm, currentUserId, isSelected, onClick }) => {
+const DMListItem = ({ dm, currentUserId, isSelected, onClick, onContextMenu }) => {
   const otherUserId = dm.participants.find(id => id !== currentUserId);
   const [otherUser, setOtherUser] = useState(null);
 
@@ -30,8 +30,9 @@ const DMListItem = ({ dm, currentUserId, isSelected, onClick }) => {
   return (
     <button
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={cn(
-        'w-full flex items-center gap-3 px-2 py-2 rounded mb-1 group',
+        'w-full flex items-center gap-3 px-2 py-2 rounded mb-1 group relative',
         'text-dark-muted hover:bg-dark-hover hover:text-dark-text',
         'transition-colors duration-150',
         isSelected && 'bg-dark-hover text-dark-text'
@@ -71,8 +72,51 @@ const DMListItem = ({ dm, currentUserId, isSelected, onClick }) => {
 
 export const DMList = ({ dms, selectedDmId, onSelectDm }) => {
   const { currentUser } = useAuth();
+  const [contextMenu, setContextMenu] = useState(null);
+  const [optimisticallyHidden, setOptimisticallyHidden] = useState([]);
+
+  const handleContextMenu = (e, dm) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.pageX,
+      y: e.pageY,
+      dmId: dm.id
+    });
+  };
+
+  const handleDeleteDm = async (dmId) => {
+      // Optimistic Update: Hide immediately
+      setOptimisticallyHidden(prev => [...prev, dmId]);
+      setContextMenu(null);
+
+      if (!currentUser) return;
+      try {
+          const dmRef = doc(db, 'dms', dmId);
+          await updateDoc(dmRef, {
+              hiddenFor: arrayUnion(currentUser.uid)
+          });
+          // Also set selection to null if the deleted DM was selected
+          if (selectedDmId === dmId) {
+             onSelectDm(null);
+          }
+      } catch (err) {
+          console.error("Error deleting DM:", err);
+          // Rollback optimistic update if failed (optional, but good practice)
+          setOptimisticallyHidden(prev => prev.filter(id => id !== dmId));
+      }
+  };
+
+  // Close context menu on click elsewhere
+  useEffect(() => {
+      const handleClick = () => setContextMenu(null);
+      window.addEventListener('click', handleClick);
+      return () => window.removeEventListener('click', handleClick);
+  }, []);
   
-  if (!dms || dms.length === 0) {
+  // Filter DMs based on props AND optimistic state
+  const visibleDms = dms?.filter(dm => !optimisticallyHidden.includes(dm.id)) || [];
+  
+  if (visibleDms.length === 0) {
       return (
           <div className="px-4 py-8 text-center text-dark-muted text-sm">
               <p>No conversations yet.</p>
@@ -89,17 +133,34 @@ export const DMList = ({ dms, selectedDmId, onSelectDm }) => {
         </div>
         
         <div className="space-y-0.5">
-          {dms.map((dm) => (
+          {visibleDms.map((dm) => (
             <DMListItem
               key={dm.id}
               dm={dm}
               currentUserId={currentUser.uid}
               isSelected={selectedDmId === dm.id}
               onClick={() => onSelectDm(dm)}
+              onContextMenu={(e) => handleContextMenu(e, dm)}
             />
           ))}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+          <div 
+              className="fixed bg-dark-sidebar border border-dark-hover shadow-xl rounded-md z-50 py-1 min-w-[160px]"
+              style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+              <button 
+                  onClick={() => handleDeleteDm(contextMenu.dmId)}
+                  className="w-full text-left px-4 py-2 hover:bg-red-500/10 text-red-400 hover:text-red-500 text-sm flex items-center gap-2 transition-colors"
+              >
+                  <MdDelete size={16} />
+                  Delete Conversation
+              </button>
+          </div>
+      )}
     </div>
   );
 };

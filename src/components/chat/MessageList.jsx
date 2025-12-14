@@ -572,9 +572,12 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                       let displayText = message.text;
                       
                       // Identify rich media URLs that are shown in previews
-                      const richUrls = urls.filter(url => 
-                        ['youtube', 'spotify', 'twitter', 'image'].includes(detectLinkType(url))
-                      );
+                      const richUrls = urls.filter(url => {
+                        const type = detectLinkType(url);
+                        // Hide text if it triggers ANY specialized preview card (video, audio, image, file, youtube, etc)
+                        // Keep text only if it's 'generic' (standard link card) or 'twitter' (optional, but twitter embed sometimes fails so text is safeguard? actually twitter has embed)
+                        return ['youtube', 'spotify', 'twitter', 'image', 'video', 'audio', 'file'].includes(type);
+                      });
 
                       // Remove those URLs from the display text
                       richUrls.forEach(url => {

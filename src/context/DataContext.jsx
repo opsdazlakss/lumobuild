@@ -323,7 +323,11 @@ export const DataProvider = ({ children }) => {
         const timeB = b.updatedAt?.toMillis() || 0;
         return timeB - timeA;
       });
-      setDms(dmsData);
+      // Filter out hidden DMs
+      const visibleDms = dmsData.filter(dm => 
+        !dm.hiddenFor || !dm.hiddenFor.includes(currentUser.uid)
+      );
+      setDms(visibleDms);
 
       // Notification Sound Logic
       if (!isDmInitialLoad.current) {

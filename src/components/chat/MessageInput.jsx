@@ -6,6 +6,7 @@ import { MdSend, MdClose, MdEmojiEmotions, MdGif, MdPoll, MdImage, MdAddCircle }
 import { EmojiPicker } from '../shared/EmojiPicker';
 import { GifPicker } from './GifPicker';
 import { PollCreator } from './PollCreator';
+import { uploadToCloudinary } from '../../services/cloudinary';
 import { uploadToImgBB } from '../../services/imgbb';
 
 export const MessageInput = ({ serverId, channelId, channel, userId, userProfile, userRole, users, replyingTo, onCancelReply }) => {
@@ -70,7 +71,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
             userId: userId,
             timestamp: serverTimestamp()
           },
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          hiddenFor: [] // Unhide for everyone on new message
         });
       }
     } catch (err) {
@@ -112,7 +114,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
             userId: userId,
             timestamp: serverTimestamp()
           },
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          hiddenFor: [] // Unhide for everyone on new message
         });
       }
     } catch (err) {
@@ -126,20 +129,18 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const processFileSelection = (file) => {
     if (!file) return;
 
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      error('Please select an image file');
-      return;
-    }
-
-    // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      error('Image size must be less than 10MB');
+    // Check file size (max 40MB for unsigned Cloudinary free)
+    if (file.size > 40 * 1024 * 1024) {
+      error('File size must be less than 40MB');
       return;
     }
 
     // Create preview
-    const url = URL.createObjectURL(file);
+    // For non-images, we won't show a visual preview, but we'll show an icon/name
+    let url = null;
+    if (file.type.startsWith('image/')) {
+        url = URL.createObjectURL(file);
+    }
     setSelectedFile(file);
     setPreviewUrl(url);
     setImageCaption('');
@@ -232,12 +233,26 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     try {
       setUploadState({ uploading: true, progress: 0, speed: '0 KB/s' });
       
-      const imageUrl = await uploadToImgBB(selectedFile, (progress, speed) => {
-        setUploadState({ uploading: true, progress, speed });
-      });
+      let uploadUrl, uploadMeta;
+
+      // Determine upload service based on file type
+      if (selectedFile.type.startsWith('image/')) {
+        const imageUrl = await uploadToImgBB(selectedFile, (progress, speed) => {
+          setUploadState({ uploading: true, progress, speed });
+        });
+        uploadUrl = imageUrl;
+        // ImgBB only returns URL string, not metadata object like Cloudinary wrapper
+      } else {
+        const result = await uploadToCloudinary(selectedFile, (progress, speed) => {
+          setUploadState({ uploading: true, progress, speed });
+        });
+        uploadUrl = result.url;
+        uploadMeta = result;
+      }
       
-      // Send message with image URL and caption
-      const messageText = imageCaption.trim() ? `${imageUrl}\n${imageCaption}` : imageUrl;
+      // Send message with URL and caption
+      // Format: url \n caption (if any)
+      const messageText = imageCaption.trim() ? `${uploadUrl}\n${imageCaption}` : uploadUrl;
       
       const messageData = {
         text: messageText,
@@ -253,18 +268,18 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
         await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
         await updateDoc(doc(db, 'dms', channelId), {
           lastMessage: {
-            text: '📷 Image',
+            text: selectedFile.type.startsWith('image/') ? '📷 Image' : '📎 Attachment',
             userId: userId,
             timestamp: serverTimestamp()
           },
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          hiddenFor: [] // Unhide for everyone on new message
         });
       }
-
       handleCancelPreview(); // Cleanup
     } catch (err) {
-      console.error('Error uploading image:', err);
-      error('Failed to upload image');
+      console.error('Error uploading file:', err);
+      error('Failed to upload file');
     } finally {
       setUploadState({ uploading: false, progress: 0, speed: '' });
     }
@@ -437,7 +452,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
             userId: userId,
             timestamp: serverTimestamp()
           },
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          hiddenFor: [] // Unhide for everyone on new message
         });
       }
       
@@ -540,16 +556,24 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
         )}
 
         {/* Image Preview Modal */}
-        {selectedFile && previewUrl && (
+        {selectedFile && (
           <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
             <div className="bg-dark-bg border border-dark-hover rounded-lg shadow-2xl max-w-lg w-full overflow-hidden flex flex-col p-4">
               <h3 className="text-dark-text font-semibold mb-4 flex items-center gap-2">
                 <MdImage className="text-brand-primary" />
-                Upload Image
+                Upload Attachment
               </h3>
               
               <div className="flex-1 w-full bg-black/50 rounded-lg overflow-hidden flex items-center justify-center mb-4 border border-dark-hover min-h-[200px] max-h-[400px]">
-                <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+                ) : (
+                    <div className="flex flex-col items-center gap-2 text-dark-muted">
+                        <div className="text-6xl">📄</div>
+                        <div className="text-sm font-medium text-dark-text max-w-xs truncate px-4">{selectedFile.name}</div>
+                        <div className="text-xs">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
+                )}
               </div>
 
               <input
@@ -639,11 +663,13 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           onPaste={async (e) => {
             const items = e.clipboardData.items;
             for (let i = 0; i < items.length; i++) {
-              if (items[i].type.indexOf('image') !== -1) {
+            for (let i = 0; i < items.length; i++) {
+              if (items[i].kind === 'file') {
                 e.preventDefault();
                 processFileSelection(items[i].getAsFile());
                 break;
               }
+            }
             }
           }}
           placeholder={!canSendMessage ? lockMessage : (userProfile?.isMuted ? 'You are muted' : 'Type a message...')}
@@ -659,7 +685,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
         {isDragging && (
           <div className="fixed inset-0 z-[200] bg-brand-primary/90 flex flex-col items-center justify-center animate-fade-in pointer-events-none">
             <div className="bg-white/10 p-8 rounded-full mb-6">
-              <MdImage size={64} className="text-white animate-bounce" />
+              <MdAddCircle size={64} className="text-white animate-bounce" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Drop your file here</h2>
             <p className="text-white/80">to upload instantly</p>
@@ -689,7 +715,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-dark-hover text-left transition-colors"
               >
                 <MdImage className="text-green-400" size={20} />
-                <span className="text-sm text-dark-text font-medium">Upload Image</span>
+                <span className="text-sm text-dark-text font-medium">Upload File</span>
               </button>
               
               <button
@@ -713,7 +739,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelect}
-          accept="image/*"
+          // accept="image/*" // Allow all types
           className="hidden"
         />
         

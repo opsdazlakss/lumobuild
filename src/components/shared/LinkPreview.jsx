@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MdOpenInNew, MdPlayCircle, MdMusicNote } from 'react-icons/md';
+import { MdOpenInNew, MdPlayCircle, MdMusicNote, MdDescription, MdDownload } from 'react-icons/md';
 import { FaTwitter, FaSpotify, FaYoutube } from 'react-icons/fa';
 
 // URL Detection Patterns
@@ -7,6 +7,8 @@ const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|e
 const SPOTIFY_REGEX = /(?:https?:\/\/)?(?:open\.)?spotify\.com\/(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]+)/;
 const TWITTER_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/(\w+)\/status\/(\d+)/;
 export const IMAGE_REGEX = /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i;
+export const VIDEO_REGEX = /\.(mp4|webm|ogg|mov)(\?.*)?$/i;
+export const AUDIO_REGEX = /\.(mp3|wav|ogg|m4a)(\?.*)?$/i;
 
 // Extract video ID from YouTube URL
 const getYouTubeId = (url) => {
@@ -32,6 +34,10 @@ export const detectLinkType = (url) => {
   if (SPOTIFY_REGEX.test(url)) return 'spotify';
   if (TWITTER_REGEX.test(url)) return 'twitter';
   if (IMAGE_REGEX.test(url)) return 'image';
+  if (VIDEO_REGEX.test(url)) return 'video';
+  if (AUDIO_REGEX.test(url)) return 'audio';
+  // Check for Cloudinary raw uploads or likely file extensions
+  if (url.includes('/raw/upload/') || /\.(zip|rar|7z|exe|pdf|docx|xlsx|txt|iso|yml|json|xml|csv)$/i.test(url)) return 'file';
   return 'generic';
 };
 
@@ -250,6 +256,63 @@ const TwitterEmbed = ({ url }) => {
   );
 };
 
+
+// Video Embed Component
+const VideoEmbed = ({ url }) => {
+  return (
+    <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-dark-hover bg-dark-sidebar">
+      <video 
+        src={url} 
+        controls 
+        className="w-full max-h-[400px] bg-black"
+      />
+    </div>
+  );
+};
+
+// Audio Embed Component
+const AudioEmbed = ({ url }) => {
+  return (
+    <div className="mt-2 max-w-md rounded-lg border border-dark-hover bg-dark-sidebar p-3 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-brand-primary/20 flex items-center justify-center flex-shrink-0">
+            <MdMusicNote className="text-brand-primary" size={24} />
+        </div>
+        <div className="flex-1 min-w-0">
+            <div className="text-xs text-dark-muted mb-1 truncate">{url.split('/').pop()}</div>
+            <audio src={url} controls className="w-full h-8" />
+        </div>
+    </div>
+  );
+};
+
+// File Card Component (Generic)
+const FileCard = ({ url }) => {
+    const filename = url.split('/').pop().split('?')[0] || 'file'; // handle query params if any
+    const ext = filename.split('.').pop();
+
+    return (
+        <div className="mt-2 max-w-md rounded-lg border border-dark-hover bg-dark-sidebar p-3 flex items-center gap-3 hover:bg-dark-hover transition-colors">
+            <div className="w-12 h-12 rounded bg-dark-input flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-dark-text uppercase">{ext.length < 5 ? ext : 'FILE'}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-dark-text truncate">{filename}</div>
+                <div className="text-xs text-dark-muted">Attachment</div>
+            </div>
+            <a 
+                href={url} 
+                download 
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 rounded-full hover:bg-white/10 text-dark-muted hover:text-white transition-colors"
+                title="Download"
+            >
+                <MdDownload size={20} />
+            </a>
+        </div>
+    );
+}
+
 // Generic Link Card (fallback)
 const GenericLinkCard = ({ url }) => {
   // Try to extract domain for display
@@ -295,6 +358,12 @@ export const LinkPreview = ({ url }) => {
       return <TwitterEmbed url={url} />;
     case 'image':
       return <ImageEmbed url={url} />;
+    case 'video':
+      return <VideoEmbed url={url} />;
+    case 'audio':
+        return <AudioEmbed url={url} />;
+    case 'file':
+        return <FileCard url={url} />;
     default:
       return <GenericLinkCard url={url} />;
   }

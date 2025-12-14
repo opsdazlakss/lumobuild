@@ -17,7 +17,7 @@ import { JoinServerModal } from '../components/server/JoinServerModal';
 import { CallProvider } from '../context/CallContext';
 import { CallModal } from '../components/call/CallModal';
 import { FaHashtag } from 'react-icons/fa';
-import { MdPushPin } from 'react-icons/md';
+import { MdPushPin, MdMenu, MdPeople, MdClose } from 'react-icons/md';
 import { VerifyEmailScreen } from '../components/auth/VerifyEmailScreen';
 import { usePresence } from '../hooks/usePresence';
 import { DMView } from '../components/dm/DMView';
@@ -34,6 +34,8 @@ export const MainApp = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+  const [showMobileUserList, setShowMobileUserList] = useState(false);
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [showJoinServer, setShowJoinServer] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -115,36 +117,103 @@ export const MainApp = () => {
 
   return (
     <CallProvider>
-      <div className="flex h-screen bg-dark-bg">
-        {/* Server Switcher */}
-        <ServerSwitcher
-          servers={servers}
-          currentServerId={currentServer}
-          onServerChange={handleServerChange}
-          onCreateServer={() => setShowCreateServer(true)}
-          onJoinServer={() => setShowJoinServer(true)}
-          userRole={userProfile?.role}
-          userId={currentUser?.uid}
-          unreadMentions={unreadMentions}
-        />
+      <div className="flex h-screen bg-dark-bg overflow-hidden">
+        {/* Desktop Sidebar (Hidden on Mobile) */}
+        <div className="hidden md:flex h-full">
+          <ServerSwitcher
+            servers={servers}
+            currentServerId={currentServer}
+            onServerChange={handleServerChange}
+            onCreateServer={() => setShowCreateServer(true)}
+            onJoinServer={() => setShowJoinServer(true)}
+            userRole={userProfile?.role}
+            userId={currentUser?.uid}
+            unreadMentions={unreadMentions}
+          />
+          <Sidebar
+            server={server}
+            channels={channels}
+            selectedChannel={selectedChannel}
+            onSelectChannel={setSelectedChannel}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenAdmin={() => setShowAdmin(true)}
+            onLogout={logout}
+            userProfile={userProfile}
+            serverId={currentServer}
+            userRole={userProfile?.role}
+            userId={currentUser?.uid}
+            dms={dms}
+            selectedDm={selectedDm}
+            onSelectDm={setSelectedDm}
+          />
+        </div>
 
-        {/* Sidebar */}
-        <Sidebar
-          server={server}
-          channels={channels}
-          selectedChannel={selectedChannel}
-          onSelectChannel={setSelectedChannel}
-          onOpenSettings={() => setShowSettings(true)}
-          onOpenAdmin={() => setShowAdmin(true)}
-          onLogout={logout}
-          userProfile={userProfile}
-          serverId={currentServer}
-          userRole={userProfile?.role}
-          userId={currentUser?.uid}
-          dms={dms}
-          selectedDm={selectedDm}
-          onSelectDm={setSelectedDm}
-        />
+        {/* Mobile Sidebar Drawer */}
+        {showMobileSidebar && (
+          <div className="fixed inset-0 z-50 flex md:hidden">
+            {/* Backdrop */}
+            <div 
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setShowMobileSidebar(false)}
+            />
+            
+            {/* Drawer Content */}
+            <div className="relative flex h-full animate-slide-in-left">
+              <ServerSwitcher
+                servers={servers}
+                currentServerId={currentServer}
+                onServerChange={(id) => {
+                  handleServerChange(id);
+                  // Don't close immediately if switching servers, maybe? 
+                  // Actually safer to close or keep open? 
+                  // Let's keep open for now or user can close. 
+                  // Typically you switch server -> then pick channel. 
+                }}
+                onCreateServer={() => setShowCreateServer(true)}
+                onJoinServer={() => setShowJoinServer(true)}
+                userRole={userProfile?.role}
+                userId={currentUser?.uid}
+                unreadMentions={unreadMentions}
+              />
+              <Sidebar
+                server={server}
+                channels={channels}
+                selectedChannel={selectedChannel}
+                onSelectChannel={(channel) => {
+                  setSelectedChannel(channel);
+                  setShowMobileSidebar(false); // Close on selection
+                }}
+                onOpenSettings={() => {
+                  setShowSettings(true);
+                  setShowMobileSidebar(false);
+                }}
+                onOpenAdmin={() => {
+                  setShowAdmin(true);
+                  setShowMobileSidebar(false);
+                }}
+                onLogout={logout}
+                userProfile={userProfile}
+                serverId={currentServer}
+                userRole={userProfile?.role}
+                userId={currentUser?.uid}
+                dms={dms}
+                selectedDm={selectedDm}
+                onSelectDm={(dm) => {
+                  setSelectedDm(dm);
+                  setShowMobileSidebar(false);
+                }}
+              />
+              {/* Close Button */}
+              <button 
+                onClick={() => setShowMobileSidebar(false)}
+                className="absolute top-2 right-2 p-2 bg-dark-bg/50 rounded-full text-white md:hidden"
+                style={{ right: '-3rem' }} // Position outside
+              >
+                <MdClose size={24} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Main Chat Area */}
         <div className="flex-1 flex flex-col">
@@ -160,12 +229,20 @@ export const MainApp = () => {
             <>
               {/* Channel Header */}
               <div className="h-12 px-4 flex items-center justify-between border-b border-dark-hover shadow-sm bg-dark-bg">
-                <div className="flex items-center gap-2">
-                  <FaHashtag className="text-dark-muted" />
-                  <h2 className="font-semibold text-dark-text flex items-center">
-                    <span>{selectedChannel?.name || 'Select a channel'}</span>
+                <div className="flex items-center gap-2 overflow-hidden">
+                  {/* Mobile Menu Button */}
+                  <button
+                    onClick={() => setShowMobileSidebar(true)}
+                    className="md:hidden p-1 mr-1 text-dark-muted hover:text-dark-text"
+                  >
+                    <MdMenu size={24} />
+                  </button>
+
+                  <FaHashtag className="text-dark-muted flex-shrink-0" />
+                  <h2 className="font-semibold text-dark-text flex items-center min-w-0">
+                    <span className="truncate">{selectedChannel?.name || 'Select a channel'}</span>
                     {selectedChannel?.description && (
-                      <span className="ml-4 text-sm text-dark-muted font-normal border-l border-dark-muted/30 pl-4 truncate max-w-md">
+                      <span className="hidden md:block ml-4 text-sm text-dark-muted font-normal border-l border-dark-muted/30 pl-4 truncate max-w-md">
                         {selectedChannel.description}
                       </span>
                     )}
@@ -178,7 +255,7 @@ export const MainApp = () => {
                       {messages.filter(m => m.pinned).length > 0 && (
                         <button
                           onClick={() => setShowPinned(!showPinned)}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${
+                          className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded transition-colors ${
                             showPinned 
                               ? 'bg-brand-primary text-white' 
                               : 'bg-dark-hover text-dark-text hover:bg-dark-input'
@@ -191,11 +268,23 @@ export const MainApp = () => {
                         </button>
                       )}
                       
-                      <MessageSearch
-                        messages={messages}
-                        users={users}
-                        onResultClick={(msg) => console.log('Scroll to:', msg)}
-                      />
+                      <div className="hidden sm:block">
+                        <MessageSearch
+                          messages={messages}
+                          users={users}
+                          onResultClick={(msg) => console.log('Scroll to:', msg)}
+                        />
+                      </div>
+
+                      {/* Mobile User List Toggle */}
+                      {currentServer !== 'home' && (
+                        <button
+                          onClick={() => setShowMobileUserList(true)}
+                          className="lg:hidden p-2 text-dark-muted hover:text-dark-text"
+                        >
+                          <MdPeople size={24} />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -234,13 +323,45 @@ export const MainApp = () => {
           )}
         </div>
 
-        {/* User List - Only show in servers */}
-        {currentServer !== 'home' && (
-          <UserList 
-            users={users} 
-            currentUserId={currentUser?.uid} 
-            onStartDm={handleStartDm}
-          />
+        {/* User List - Desktop */}
+        <div className="hidden lg:block h-full">
+            {currentServer !== 'home' && (
+              <UserList 
+                users={users} 
+                currentUserId={currentUser?.uid} 
+                onStartDm={handleStartDm}
+              />
+            )}
+        </div>
+
+        {/* User List - Mobile Drawer */}
+        {showMobileUserList && currentServer !== 'home' && (
+           <div className="fixed inset-0 z-50 flex justify-end lg:hidden">
+            {/* Backdrop */}
+            <div 
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setShowMobileUserList(false)}
+            />
+            
+            <div className="relative h-full bg-dark-sidebar shadow-xl w-64 animate-slide-in-right">
+               <div className="flex items-center justify-between p-4 border-b border-dark-hover">
+                 <h3 className="font-semibold text-dark-text">Members</h3>
+                 <button onClick={() => setShowMobileUserList(false)}>
+                   <MdClose size={24} className="text-dark-muted" />
+                 </button>
+               </div>
+               <div className="h-[calc(100%-60px)]">
+                  <UserList 
+                    users={users} 
+                    currentUserId={currentUser?.uid} 
+                    onStartDm={(user) => {
+                      handleStartDm(user);
+                      setShowMobileUserList(false);
+                    }}
+                  />
+               </div>
+            </div>
+           </div>
         )}
         
         {/* Pinned Messages Panel */}

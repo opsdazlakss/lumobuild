@@ -66,12 +66,16 @@ function AuthRouter() {
   );
 }
 
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
+
 function App() {
   return (
     <ToastProvider>
-      <AuthProvider>
-        <AuthRouter />
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <AuthRouter />
+        </AuthProvider>
+      </ErrorBoundary>
     </ToastProvider>
   );
 }

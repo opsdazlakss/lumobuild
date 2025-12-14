@@ -42,12 +42,18 @@ export const MainApp = () => {
   const [messages, setMessages] = useState([]);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateData, setUpdateData] = useState(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false); // New state for visual feedback
 
   // Check for updates on mount (mobile only)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
     const checkUpdate = async () => {
+      setCheckingUpdate(true);
+      
+      // Minimum display time for the splash to be visible (1.5s)
+      const startTime = Date.now();
+
       try {
         const docRef = doc(db, 'system', 'app_version');
         const docSnap = await getDoc(docRef);
@@ -56,9 +62,6 @@ export const MainApp = () => {
           const data = docSnap.data();
           const currentVersion = pkg.version;
           const remoteVersion = data.android;
-          
-          // Debugging Info (Temporary alert to verify logic on phone)
-          // alert(`V: ${currentVersion} -> ${remoteVersion}`);
           
           if (remoteVersion && remoteVersion !== currentVersion) {
             const v1 = currentVersion.split('.').map(Number);
@@ -88,6 +91,13 @@ export const MainApp = () => {
         }
       } catch (err) {
         console.error('Failed to check for updates:', err);
+      } finally {
+        // Ensure splash screen stays for at least 1.5 seconds total
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 1500) {
+          await new Promise(resolve => setTimeout(resolve, 1500 - elapsed));
+        }
+        setCheckingUpdate(false);
       }
     };
 
@@ -504,6 +514,15 @@ export const MainApp = () => {
             downloadUrl={updateData?.downloadUrl}
             forceUpdate={updateData?.forceUpdate}
           />
+        )}
+
+        {/* Update Check Splash Screen (Mobile Only) */}
+        {checkingUpdate && (
+          <div className="fixed inset-0 z-[60] bg-dark-bg flex flex-col items-center justify-center text-white">
+             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-primary mb-6"></div>
+             <h2 className="text-xl font-semibold mb-2">Checking for updates...</h2>
+             <p className="text-dark-muted font-mono text-sm">v{pkg.version}</p>
+          </div>
         )}
       </div>
     </CallProvider>

@@ -42,22 +42,24 @@ export const MainApp = () => {
   const [messages, setMessages] = useState([]);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateData, setUpdateData] = useState(null);
-  const [checkingUpdate, setCheckingUpdate] = useState(false); // New state for visual feedback
+  const [updateStatus, setUpdateStatus] = useState('idle'); // 'idle' | 'checking' | 'uptodate' | 'available'
 
   // Check for updates on mount (mobile only)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
     const checkUpdate = async () => {
-      setCheckingUpdate(true);
+      setUpdateStatus('checking');
       
-      // Minimum display time for the splash to be visible (1.5s)
       const startTime = Date.now();
 
       try {
         const docRef = doc(db, 'system', 'app_version');
         const docSnap = await getDoc(docRef);
         
+        let hasUpdate = false;
+        let updateInfo = null;
+
         if (docSnap.exists()) {
           const data = docSnap.data();
           const currentVersion = pkg.version;
@@ -67,7 +69,6 @@ export const MainApp = () => {
             const v1 = currentVersion.split('.').map(Number);
             const v2 = remoteVersion.split('.').map(Number);
             
-            let hasUpdate = false;
             for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
               const num1 = v1[i] || 0;
               const num2 = v2[i] || 0;
@@ -80,24 +81,36 @@ export const MainApp = () => {
             }
 
             if (hasUpdate) {
-              setUpdateData({
+              updateInfo = {
                 version: remoteVersion,
                 downloadUrl: data.downloadUrl,
                 forceUpdate: data.forceUpdate || false
-              });
-              setShowUpdateModal(true);
+              };
             }
           }
         }
-      } catch (err) {
-        console.error('Failed to check for updates:', err);
-      } finally {
-        // Ensure splash screen stays for at least 1.5 seconds total
+
+        // Wait for minimum splash time (1.5s)
         const elapsed = Date.now() - startTime;
         if (elapsed < 1500) {
           await new Promise(resolve => setTimeout(resolve, 1500 - elapsed));
         }
-        setCheckingUpdate(false);
+
+        if (hasUpdate) {
+          setUpdateData(updateInfo);
+          setUpdateStatus('available');
+          setShowUpdateModal(true);
+        } else {
+          setUpdateStatus('uptodate');
+          // Show "Up to date" message for 1.5s then close
+          setTimeout(() => {
+            setUpdateStatus('idle');
+          }, 1500);
+        }
+
+      } catch (err) {
+        console.error('Failed to check for updates:', err);
+        setUpdateStatus('idle'); // On error, just let them in
       }
     };
 
@@ -517,11 +530,25 @@ export const MainApp = () => {
         )}
 
         {/* Update Check Splash Screen (Mobile Only) */}
-        {checkingUpdate && (
-          <div className="fixed inset-0 z-[60] bg-dark-bg flex flex-col items-center justify-center text-white">
-             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-primary mb-6"></div>
-             <h2 className="text-xl font-semibold mb-2">Checking for updates...</h2>
-             <p className="text-dark-muted font-mono text-sm">v{pkg.version}</p>
+        {['checking', 'uptodate'].includes(updateStatus) && (
+          <div className="fixed inset-0 z-[60] bg-dark-bg flex flex-col items-center justify-center text-white transition-opacity duration-300">
+             {updateStatus === 'checking' && (
+               <>
+                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-primary mb-6"></div>
+                 <h2 className="text-xl font-semibold mb-2">Checking for updates...</h2>
+                 <p className="text-dark-muted font-mono text-sm">v{pkg.version}</p>
+               </>
+             )}
+             
+             {updateStatus === 'uptodate' && (
+               <>
+                 <div className="rounded-full bg-green-500/20 p-4 mb-6">
+                    <MdAndroid size={48} className="text-green-500" />
+                 </div>
+                 <h2 className="text-xl font-semibold mb-2 text-green-400">You are up to date!</h2>
+                 <p className="text-dark-muted font-mono text-sm">v{pkg.version}</p>
+               </>
+             )}
           </div>
         )}
       </div>

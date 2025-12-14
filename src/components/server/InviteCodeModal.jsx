@@ -19,6 +19,7 @@ export const InviteCodeModal = ({ isOpen, onClose, serverId }) => {
   const [inviteCode, setInviteCode] = useState('');
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isUnlimited, setIsUnlimited] = useState(false);
   const { success, error } = useToast();
 
   const handleGenerate = async () => {
@@ -30,10 +31,11 @@ export const InviteCodeModal = ({ isOpen, onClose, serverId }) => {
       await setDoc(doc(db, 'inviteCodes', code), {
         serverId,
         createdAt: serverTimestamp(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-        maxUses: 1,
+        expiresAt: new Date(Date.now() + (isUnlimited ? 365 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000)), // 24 hours or 1 year
+        maxUses: isUnlimited ? -1 : 1,
         uses: 0,
-        isActive: true
+        isActive: true,
+        isUnlimited
       });
 
       setInviteCode(code);
@@ -58,9 +60,25 @@ export const InviteCodeModal = ({ isOpen, onClose, serverId }) => {
       <div className="space-y-4">
         {!inviteCode ? (
           <>
-            <p className="text-dark-text text-sm">
-              Generate a one-time invite code for this server.
-            </p>
+            <div className="space-y-2">
+              <p className="text-dark-text text-sm">
+                Generate an invite code for this server.
+              </p>
+              
+              <label className="flex items-center gap-2 p-3 rounded bg-dark-bg cursor-pointer hover:bg-opacity-80 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={isUnlimited}
+                  onChange={(e) => setIsUnlimited(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-600 bg-dark-bg text-brand-primary focus:ring-brand-primary"
+                />
+                <div className="flex flex-col">
+                  <span className="text-white text-sm font-medium">Unlimited Uses</span>
+                  <span className="text-dark-muted text-xs">Code will not expire after one use</span>
+                </div>
+              </label>
+            </div>
+
             <Button 
               variant="primary" 
               onClick={handleGenerate} 
@@ -99,6 +117,7 @@ export const InviteCodeModal = ({ isOpen, onClose, serverId }) => {
                   onClick={() => {
                     setInviteCode('');
                     setCopied(false);
+                    setIsUnlimited(false);
                   }}
                   className="flex items-center justify-center gap-2 px-4"
                   title="Generate new code"
@@ -109,8 +128,8 @@ export const InviteCodeModal = ({ isOpen, onClose, serverId }) => {
             </div>
 
             <div className="text-xs text-dark-muted space-y-1">
-              <div>• Expires in 24 hours</div>
-              <div>• One-time use only</div>
+              <div>• {isUnlimited ? 'Expires in 1 year' : 'Expires in 24 hours'}</div>
+              <div>• {isUnlimited ? 'Unlimited uses' : 'One-time use only'}</div>
               <div>• Share with trusted users</div>
             </div>
 

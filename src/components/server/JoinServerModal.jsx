@@ -36,7 +36,7 @@ export const JoinServerModal = ({ isOpen, onClose, userId, onSuccess }) => {
         return;
       }
 
-      if (invite.uses >= invite.maxUses) {
+      if (invite.uses >= invite.maxUses && !invite.isUnlimited) {
         error('This invite code has reached its usage limit');
         return;
       }
@@ -60,10 +60,16 @@ export const JoinServerModal = ({ isOpen, onClose, userId, onSuccess }) => {
       });
 
       // Update invite code
-      await updateDoc(inviteRef, {
-        uses: increment(1),
-        isActive: false // One-time use
-      });
+      const updateData = {
+        uses: increment(1)
+      };
+      
+      // Only deactivate if not unlimited
+      if (!invite.isUnlimited) {
+        updateData.isActive = false;
+      }
+
+      await updateDoc(inviteRef, updateData);
 
       // Update server member count
       await updateDoc(doc(db, 'servers', invite.serverId), {

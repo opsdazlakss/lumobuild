@@ -50,7 +50,6 @@ function createMainWindow() {
     minHeight: 500,
     title: 'Lumo',
     frame: true,
-    autoHideMenuBar: true,
     show: false, // Don't show until ready
     icon: path.join(__dirname, '../public/lumo-logo.png'),
     webPreferences: {
@@ -59,6 +58,8 @@ function createMainWindow() {
     },
     backgroundColor: '#2c2b31',
   });
+
+  mainWindow.setMenu(null);
 
   const isDev = !app.isPackaged;
   

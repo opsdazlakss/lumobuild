@@ -72,7 +72,7 @@ export const MainApp = () => {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []); // Run once on mount
+  }, [selectedChannel, selectedDm]); // Add dependencies to avoid stale state
 
   // Auto-select first channel...
   useEffect(() => {

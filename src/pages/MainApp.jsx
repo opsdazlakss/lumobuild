@@ -40,6 +40,8 @@ export const MainApp = () => {
   const [showJoinServer, setShowJoinServer] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateData, setUpdateData] = useState(null);
 
   // Auto-clear unread mentions...
   useEffect(() => {

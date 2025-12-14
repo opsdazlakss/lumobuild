@@ -1,8 +1,36 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, desktopCapturer } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
+// ... (existing code) ...
+
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    // ... (existing config) ...
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    backgroundColor: '#2c2b31',
+  });
+
+  // Enable Screen Sharing (getDisplayMedia)
+  mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+    desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
+      // Grant access to the first screen available
+      if (sources.length > 0) {
+          callback({ video: sources[0], audio: 'loopback' });
+      } else {
+          // No screen found
+          callback(null);
+      }
+    }).catch(err => {
+      console.error('Screen capture error:', err);
+      callback(null);
+    });
+  });
+}
 // Configure logging
 log.transports.file.level = 'info';
 autoUpdater.logger = log;

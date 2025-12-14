@@ -4,6 +4,7 @@ import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdScreenShare, M
 import { FaPhone } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
 import Draggable from 'react-draggable';
+import { Capacitor } from '@capacitor/core';
 
 export const CallModal = () => {
   const { 
@@ -195,17 +196,19 @@ export const CallModal = () => {
            {isVideoOff ? <MdVideocamOff size={22} /> : <MdVideocam size={22} />}
          </button>
 
-         <button 
-           onClick={toggleScreenShare}
-           disabled={!activeCall}
-           className={cn(
-               "p-3 rounded-xl transition-all hover:scale-110 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed",
-               isScreenSharing ? "bg-green-500 text-white" : "bg-gray-700/50 text-white hover:bg-gray-600"
-           )}
-           title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
-         >
-           {isScreenSharing ? <MdStopScreenShare size={22} /> : <MdScreenShare size={22} />}
-         </button>
+         {!Capacitor.isNativePlatform() && (
+          <button 
+            onClick={toggleScreenShare}
+            disabled={!activeCall}
+            className={cn(
+                "p-3 rounded-xl transition-all hover:scale-110 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed",
+                isScreenSharing ? "bg-green-500 text-white" : "bg-gray-700/50 text-white hover:bg-gray-600"
+            )}
+            title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
+          >
+            {isScreenSharing ? <MdStopScreenShare size={22} /> : <MdScreenShare size={22} />}
+          </button>
+         )}
 
          <div className="w-px h-8 bg-gray-700 mx-2" />
 

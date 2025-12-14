@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -17,10 +17,13 @@ import { JoinServerModal } from '../components/server/JoinServerModal';
 import { CallProvider } from '../context/CallContext';
 import { CallModal } from '../components/call/CallModal';
 import { FaHashtag } from 'react-icons/fa';
-import { MdPushPin, MdMenu, MdPeople, MdClose } from 'react-icons/md';
+import { MdPushPin, MdMenu, MdPeople, MdClose, MdAndroid } from 'react-icons/md';
 import { VerifyEmailScreen } from '../components/auth/VerifyEmailScreen';
 import { usePresence } from '../hooks/usePresence';
 import { DMView } from '../components/dm/DMView';
+import { Capacitor } from '@capacitor/core';
+import pkg from '../../package.json';
+import { UpdateModal } from '../components/shared/UpdateModal';
 
 export const MainApp = () => {
   const { currentUser, userProfile, logout } = useAuth();

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Button } from '../components/shared/Button';
-import { getLatestRelease } from '../utils/githubRelease';
+
 import { Input } from '../components/shared/Input';
 import { StatusSelector } from '../components/shared/StatusSelector';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -494,7 +494,6 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   <div className="font-semibold text-dark-text">Version</div>
                   <div>{import.meta.env.PACKAGE_VERSION || '1.0.0'}</div>
                 </div>
-                <DesktopDownloadButton />
 
                 <div>
                   <div className="font-semibold text-dark-text">Developer</div>
@@ -631,50 +630,5 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     </div>
   );
 };
-
-function DesktopDownloadButton() {
-  const [downloadUrl, setDownloadUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchUrl() {
-      try {
-        const release = await getLatestRelease();
-        const platform = navigator.platform.toLowerCase();
-        let url = null;
-        if (platform.includes('win')) url = release?.downloadUrl?.win;
-        else if (platform.includes('mac')) url = release?.downloadUrl?.mac;
-        else if (platform.includes('linux')) url = release?.downloadUrl?.linux;
-        
-        if (!url) url = release?.downloadUrl?.win; 
-
-        setDownloadUrl(url);
-      } catch (err) {
-        console.error("Failed to fetch download link", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchUrl();
-  }, []);
-
-  if (loading) return <p className="text-gray-500 text-xs mt-2">Checking for updates...</p>;
-  if (!downloadUrl) return null;
-
-  return (
-    <div className="mt-4">
-      <a 
-        href={downloadUrl} 
-        className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-md transition-colors"
-        target="_blank" 
-        rel="noopener noreferrer"
-      >
-        <MdInfo className="w-4 h-4" />
-        Download Desktop App
-      </a>
-      <p className="text-gray-500 text-xs mt-1">Get the latest version from GitHub</p>
-    </div>
-  );
-}
 
 export default SettingsModal;

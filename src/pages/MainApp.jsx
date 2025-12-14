@@ -55,6 +55,25 @@ export const MainApp = () => {
     }
   }, [currentServer, currentUser, unreadMentions]);
 
+
+
+  // Open mobile sidebar on initial load if on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768 && !selectedChannel && !selectedDm) {
+        setShowMobileSidebar(true);
+      }
+    };
+
+    // Check on mount
+    if (window.innerWidth < 768) {
+        setShowMobileSidebar(true);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []); // Run once on mount
+
   // Auto-select first channel...
   useEffect(() => {
     if (channels.length > 0) {

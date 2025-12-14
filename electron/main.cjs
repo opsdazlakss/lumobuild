@@ -74,6 +74,7 @@ function createMainWindow() {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
     }
+    mainWindow.maximize(); // Start maximized
     mainWindow.show();
   });
 }

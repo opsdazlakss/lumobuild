@@ -674,7 +674,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           }}
           placeholder={!canSendMessage ? lockMessage : (userProfile?.isMuted ? 'You are muted' : 'Type a message...')}
           disabled={sending || userProfile?.isMuted || !canSendMessage || selectedFile !== null}
-          className="w-full bg-dark-input text-dark-text px-12 py-3 pr-24 rounded-lg
+          className="w-full bg-dark-input text-dark-text px-12 py-3 pr-36 rounded-lg
                      border border-transparent focus:border-brand-primary
                      outline-none transition-colors duration-200
                      placeholder:text-dark-muted

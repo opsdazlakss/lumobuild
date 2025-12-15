@@ -635,7 +635,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
 
         {/* GIF Picker */}
         {showGifPicker && (
-          <div className="absolute bottom-full right-0 mb-4 w-[400px] h-[450px] shadow-2xl rounded-lg z-50">
+          <div className="absolute bottom-full right-0 mb-4 w-[85vw] max-w-[400px] h-[450px] shadow-2xl rounded-lg z-50">
              {/* Backdrop to close */}
              <div 
                className="fixed inset-0 z-[-1]" 

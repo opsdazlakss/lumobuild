@@ -588,7 +588,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                       displayText = displayText.trim();
                       
                       return displayText.length > 0 && (
-                        <div className="text-dark-text whitespace-pre-wrap break-all">
+                        <div className="text-dark-text whitespace-pre-wrap break-words">
                           <MarkdownText
                             onMentionClick={(username) => {
                               const user = users.find(u => 

@@ -1,5 +1,6 @@
 import { Modal } from './Modal';
 import { cn } from '../../utils/helpers';
+import { BADGES } from '../../utils/badges';
 import { useCall } from '../../context/CallContext';
 import { useAuth } from '../../context/AuthContext';
 import { MdPhone, MdVideocam, MdMessage } from 'react-icons/md';
@@ -79,6 +80,51 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
                   <div className={cn('w-3 h-3 rounded-full', config.color)} />
                   <span className="text-sm text-dark-muted">{config.label}</span>
                 </>
+              );
+            })()}
+          </div>
+
+          {/* User Badges */}
+          <div className="flex justify-center gap-2 mt-3 flex-wrap px-4">
+            {/* Combine manual badges (user.badges) and automatic role-based badges */}
+            {(() => {
+              const uniqueBadgeIds = new Set(user.badges || []);
+              
+              // Auto-assign admin badge if role is admin
+              if (user.role === 'admin') {
+                uniqueBadgeIds.add('admin');
+              }
+
+              const badgesToRender = Array.from(uniqueBadgeIds)
+                .map(id => BADGES[id])
+                .filter(Boolean); // Filter out invalid badge IDs
+
+              if (badgesToRender.length === 0) return null;
+
+              return (
+                <div className="p-1 rounded-lg bg-dark-sidebar/50 backdrop-blur-sm border border-dark-border/50 flex gap-2">
+                  {badgesToRender.map((badge) => {
+                    const BadgeIcon = badge.icon;
+                    return (
+                      <div key={badge.id} className="relative group cursor-help">
+                        {/* Badge Icon */}
+                        <div className="p-1 rounded hover:bg-dark-hover transition-colors">
+                          <BadgeIcon size={20} color={badge.color} />
+                        </div>
+                        
+                        {/* Custom Tooltip */}
+                        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-xs rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                          <div className="font-bold">{badge.label}</div>
+                          {badge.description && (
+                            <div className="text-gray-300 font-normal text-[10px]">{badge.description}</div>
+                          )}
+                          {/* Triangle arrow */}
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-black"></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               );
             })()}
           </div>

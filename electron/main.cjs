@@ -23,6 +23,10 @@ function createMainWindow() {
   });
 
   // Enable Screen Sharing (getDisplayMedia)
+  // Enable Screen Sharing (getDisplayMedia)
+  // DISABLE HARDCODED SELECTION: We will handle source selection in the Renderer process
+  // using desktopCapturer and getUserMedia for a custom UI.
+  /*
   mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       // Grant access to the first screen available
@@ -37,6 +41,7 @@ function createMainWindow() {
       callback({ video: null, audio: null });
     });
   });
+  */
 
   mainWindow.setMenu(null);
 

@@ -5,6 +5,8 @@ import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { playIncomingRing, playOutgoingRing, stopRing } from '../utils/callSounds';
+import { hasCapability, CAPABILITIES } from '../utils/permissions';
+
 
 const CallContext = createContext();
 
@@ -564,7 +566,7 @@ export const CallProvider = ({ children }) => {
   const screenStreamRef = useRef(null);
   const cameraStreamRef = useRef(null); // To store camera stream when screen sharing
 
-  const toggleScreenShare = async () => {
+  const toggleScreenShare = async (options = null) => {
     // If already screen sharing -> Stop it
     if (screenStreamRef.current) {
         await stopScreenShare();
@@ -573,96 +575,202 @@ export const CallProvider = ({ children }) => {
 
     // Start Screen Share
     try {
-        console.log("Requesting display media...");
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        const screenTrack = displayStream.getVideoTracks()[0];
-        setIsVideoOff(false); // Ensure UI reflects that video is ON (screen share)
+        console.log("Requesting display media...", options);
         
-        console.log("Display media obtained:", screenTrack.label);
+        let videoConstraints = {};
+        
+        // 1. Determine Constraints (Res/FPS)
+        let width = options?.width || 1280;
+        let height = options?.height || 720;
+        let frameRate = options?.frameRate || 30;
 
-        // 1. Store current camera stream/track to revert later
-        if (localStream) {
+        // If no options passed (fallback behavior), check capability
+        if (!options) {
+             const canHQ = hasCapability(userProfile, CAPABILITIES.HIGH_QUALITY);
+             if (canHQ) { width = 1920; height = 1080; frameRate = 60; }
+        }
+
+        // 2. Capture Strategy (Electron vs Web)
+        let displayStream;
+        
+        if (options?.sourceId && window.require) {
+            // ELECTRON STRATEGY: getUserMedia with sourceId
+            console.log("Using Electron getUserMedia with sourceId:", options.sourceId);
+            
+            try {
+                displayStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        mandatory: {
+                            chromeMediaSource: 'desktop'
+                        }
+                    },
+                    video: {
+                        mandatory: {
+                            chromeMediaSource: 'desktop',
+                            chromeMediaSourceId: options.sourceId,
+                            maxWidth: width,
+                            maxHeight: height,
+                            maxFrameRate: frameRate
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Electron getUserMedia failed:", e);
+                throw e;
+            }
+        } else {
+            // WEB STRATEGY: getDisplayMedia
+            // Apply standard constraints
+            const constraints = {
+                 video: { 
+                     width: { ideal: width },
+                     height: { ideal: height },
+                     frameRate: { ideal: frameRate },
+                     displaySurface: options?.displaySurface // Hint browser preference
+                 },
+                 audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: false // usually bad for system audio music
+                 } 
+            };
+            
+            console.log("Using Web getDisplayMedia with constraints:", constraints);
+            displayStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+        }
+
+        const screenVideoTrack = displayStream.getVideoTracks()[0];
+        setIsVideoOff(false); 
+        console.log("Display media obtained:", screenVideoTrack.label);
+
+        // 3. Audio Mixing (System Audio + Microphone)
+        // If we got system audio track, we need to mix it with our existing microphone stream
+        const screenAudioTrack = displayStream.getAudioTracks()[0];
+        let mixedAudioTrack = null;
+
+        if (screenAudioTrack) {
+            console.log("System audio captured! Mixing with microphone...");
+            // We need our current mic stream. 
+            // If localStream has one, grab it. OR use availableDevices mic.
+            let micStream = localStream; 
+            
+            // If localStream is missing or has no audio (muted?), we might need to get it again?
+            // Usually localStream always has our mic if we are in a call.
+            // But if we are muted, the track is enabled=false but exists.
+            
+            if (!micStream && availableDevices.audioInputs.length > 0) {
+                 // Try to get mic just for mixing purposes
+                 try {
+                     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                 } catch(e) { console.warn("Failed to get mic for mixing"); }
+            }
+
+            if (micStream && micStream.getAudioTracks().length > 0) {
+                const micTrack = micStream.getAudioTracks()[0];
+                
+                // Web Audio API Mixing
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const dest = audioCtx.createMediaStreamDestination();
+                
+                const micSource = audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
+                const sysSource = audioCtx.createMediaStreamSource(new MediaStream([screenAudioTrack]));
+                
+                // Gain Nodes for balance (optional, currently 1:1)
+                const micGain = audioCtx.createGain();
+                const sysGain = audioCtx.createGain();
+                micGain.gain.value = 1.0; 
+                sysGain.gain.value = 1.0; 
+
+                micSource.connect(micGain).connect(dest);
+                sysSource.connect(sysGain).connect(dest);
+                
+                mixedAudioTrack = dest.stream.getAudioTracks()[0];
+                
+                // Keep context reference to close later? 
+                // We'll trust browser garbage collection or simple close on stop
+                screenStreamRef.currentAudioContext = audioCtx;
+            } else {
+                // No mic, just send system audio
+                mixedAudioTrack = screenAudioTrack;
+            }
+        }
+
+        // 4. Update Local Stream
+        // Store current camera stream
+        if (localStream && !cameraStreamRef.current) {
             cameraStreamRef.current = localStream; 
         }
 
-        // 2. Event listener for "Stop sharing" chrome UI button
-        screenTrack.onended = () => {
+        screenVideoTrack.onended = () => {
             console.log("Screen track ended by user/browser UI");
             stopScreenShare();
         };
 
         screenStreamRef.current = displayStream;
 
-        // 3. Update Local Stream (Update Local UI)
-        // We create a new stream for local view combining screen video + current audio
-        // Moved up to be available for Re-call logic
-        const audioTracks = localStream ? localStream.getAudioTracks() : [];
+        // Construct new stream for local view/sending
+        // If mixed audio exists, use it. Else fall back to existing mic tracks from localStream (if any)
+        const audioTracksToUse = mixedAudioTrack ? [mixedAudioTrack] : (localStream ? localStream.getAudioTracks() : []);
+        
         const newLocalStream = new MediaStream([
-            screenTrack, 
-            ...audioTracks
+            screenVideoTrack, 
+            ...audioTracksToUse
         ]);
         setLocalStream(newLocalStream);
 
-        // 4. Update Peer Connection (Send to Remote)
+        // 5. Update Peer Connection (Send to Remote)
         if (activeCall && activeCall.peerConnection) {
             const senders = activeCall.peerConnection.getSenders();
-            const sender = senders.find(s => s.track && s.track.kind === 'video');
             
-            if (sender) {
-                console.log("Found video sender, replacing track...");
-                await sender.replaceTrack(screenTrack);
-                console.log("Track replaced successfully.");
+            // Replace Video
+            const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+            if (videoSender) {
+                await videoSender.replaceTrack(screenVideoTrack);
             } else {
-                console.log("No video sender found (Audio-only call). Renegotiating via Re-Call...");
+                // Add track if missing (renegotiation needed usually, handled via Re-Call logic below if complex)
+            }
 
-                // Fallback Strategy: Close current connection and Call again with new stream
-                // This forces PeerJS/WebRTC to negotiate a new connection with Video+Audio tracks.
-                
-                const remotePeerId = activeCall.peer;
-                const currentCall = activeCall;
-
-                if (peer && remotePeerId) {
-                    // 1. Prevent old call from triggering 'ended' logic
-                    // currentCall.off('close');
-                    // currentCall.close(); // DON'T close immediately. Let the new call replace it safely.
-                    currentCall.removeAllListeners('close'); // Just stop listening to it
-
-                    // 2. Start new call with new stream
-                    console.log("Starting new call to upgrade stream...");
-                    const newCall = peer.call(remotePeerId, newLocalStream);
-
-                    // 3. Bind events for new call
-                    newCall.on('stream', (remoteStream) => {
-                        console.log('Received remote stream (upgrade)');
-                        setRemoteStream(remoteStream);
-                    });
-                    
-                    newCall.on('close', () => {
-                        endCall();
-                    });
-
-                    newCall.on('error', (e) => {
-                        console.error('New Call error:', e);
-                        endCall(); // Or handle gracefully
-                    });
-
-                    // 4. Update State
-                    setActiveCall(newCall);
+            // Replace Audio (if we have a new mixed track)
+            if (mixedAudioTrack) {
+                const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+                if (audioSender) {
+                     console.log("Replacing audio sender with mixed track...");
+                     await audioSender.replaceTrack(mixedAudioTrack);
                 }
             }
-        } else {
-             console.warn("No active peer connection to share screen with.");
+            
+            if (!videoSender) {
+                 // Fallback for audio-only upgrading to video
+                 console.log("Audio-only -> Screen Share upgrade. Renegotiating...");
+                 // (Existing renegotiation logic ...)
+                 const remotePeerId = activeCall.peer;
+                 if (peer && remotePeerId) {
+                     activeCall.removeAllListeners('close'); 
+                     const newCall = peer.call(remotePeerId, newLocalStream);
+                     
+                     newCall.on('stream', (remoteStream) => setRemoteStream(remoteStream));
+                     newCall.on('close', () => endCall());
+                     newCall.on('error', () => endCall());
+                     setActiveCall(newCall);
+                 }
+            }
         }
-
     } catch (err) {
         console.error("Error starting screen share:", err);
         showError("Failed to start screen share");
     }
   };
 
+
   const stopScreenShare = async () => {
     if (!screenStreamRef.current) return;
     console.log("Stopping screen share...");
+
+    // 0. Clean up Audio Context if exists
+    if (screenStreamRef.currentAudioContext) {
+        screenStreamRef.currentAudioContext.close();
+        screenStreamRef.currentAudioContext = null;
+    }
 
     // 1. Stop screen tracks
     screenStreamRef.current.getTracks().forEach(t => t.stop());
@@ -671,28 +779,30 @@ export const CallProvider = ({ children }) => {
     // 2. Revert to Camera or Audio-only
     if (cameraStreamRef.current) {
          console.log("Reverting to previous stream state...");
-         const cameraTrack = cameraStreamRef.current.getVideoTracks()[0];
          
+         const cameraTrack = cameraStreamRef.current.getVideoTracks()[0];
+         const originalAudioTracks = cameraStreamRef.current.getAudioTracks();
+
          if (activeCall && activeCall.peerConnection) {
-            const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-            
-            if (cameraTrack) {
-                // We had video before, replace back
-                if (sender) {
-                    try {
-                        await sender.replaceTrack(cameraTrack);
-                        console.log("Reverted to camera track.");
-                    } catch(e) {
-                        console.error("Failed to revert track:", e);
-                    }
-                }
-            } else {
-                // We were audio-only. Remove the video sender we added.
-                if (sender) {
-                    console.log("Reverting to audio-only, removing video sender...");
-                    activeCall.peerConnection.removeTrack(sender);
-                }
-            }
+             const senders = activeCall.peerConnection.getSenders();
+             
+             // Revert Video
+             const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+             if (cameraTrack && videoSender) {
+                  try { await videoSender.replaceTrack(cameraTrack); } catch(e) {}
+             } else if (videoSender && !cameraTrack) {
+                  // If we don't have video anymore, remove sender (or just leave it mute)
+                  // activeCall.peerConnection.removeTrack(videoSender); 
+                  // Removing often complicated, just send black/mute?
+             }
+
+             // Revert Audio (Important!)
+             // We must replace the 'mixed' track with the original raw mic track
+             const audioSender = senders.find(s => s.track && s.track.kind === 'audio');
+             if (audioSender && originalAudioTracks.length > 0) {
+                  console.log("Reverting audio sender to original mic...");
+                  await audioSender.replaceTrack(originalAudioTracks[0]);
+             }
          }
 
           // Update Local UI

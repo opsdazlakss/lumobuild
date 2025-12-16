@@ -1,5 +1,10 @@
 import { useRef, useEffect, useState } from 'react';
 import { useCall } from '../../context/CallContext';
+import { useAuth } from '../../context/AuthContext';
+import { ScreenShareModal } from './ScreenShareModal';
+import { DeviceSettingsModal } from './DeviceSettingsModal';
+import { hasCapability, CAPABILITIES } from '../../utils/permissions';
+
 import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdScreenShare, MdStopScreenShare, MdVolumeUp, MdVolumeOff, MdVolumeMute, MdSettings, MdFullscreen, MdFullscreenExit } from 'react-icons/md';
 import { FaPhone } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
@@ -38,6 +43,13 @@ export const CallModal = () => {
   const [remoteVolume, setRemoteVolume] = useState(100);
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [showScreenShareModal, setShowScreenShareModal] = useState(false);
+  
+  const { userProfile } = useAuth();
+  const canScreenShare = hasCapability(userProfile, CAPABILITIES.SCREEN_SHARE);
+
+  const [isRemoteVideoActive, setIsRemoteVideoActive] = useState(false);
 
   // Sync streams to video elements
   useEffect(() => {
@@ -46,11 +58,42 @@ export const CallModal = () => {
     }
   }, [localStream, callStatus]);
 
+  // 1. Assign Remote Stream to Video Element (Always assign for Audio)
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [remoteStream, callStatus]);
+
+  // 2. Monitor Remote Track State (Visual Only)
+  useEffect(() => {
+    if (remoteStream) {
+        const videoTrack = remoteStream.getVideoTracks()[0];
+        if (videoTrack) {
+            // Initial check
+            const isActive = !videoTrack.muted && videoTrack.readyState === 'live';
+            setIsRemoteVideoActive(isActive);
+
+            const handleMute = () => setIsRemoteVideoActive(false);
+            const handleUnmute = () => setIsRemoteVideoActive(true);
+            const handleEnded = () => setIsRemoteVideoActive(false);
+            
+            videoTrack.addEventListener('mute', handleMute);
+            videoTrack.addEventListener('unmute', handleUnmute);
+            videoTrack.addEventListener('ended', handleEnded);
+
+            return () => {
+                videoTrack.removeEventListener('mute', handleMute);
+                videoTrack.removeEventListener('unmute', handleUnmute);
+                videoTrack.removeEventListener('ended', handleEnded);
+            };
+        } else {
+            setIsRemoteVideoActive(false);
+        }
+    } else {
+        setIsRemoteVideoActive(false);
+    }
+  }, [remoteStream]);
 
   // Apply volume to remote stream
   useEffect(() => {
@@ -144,20 +187,27 @@ export const CallModal = () => {
 
       {/* Main Video Area (Remote or Outgoing Placeholder) */}
       <div className="relative flex-1 bg-black flex items-center justify-center w-full h-full">
-        {remoteStream ? (
-           <video 
+        {/* Helper Video Element (Handles Audio Playback + Video Display) */}
+        {/* We keep this mounted ALWAYS so audio plays even if video is hidden */}
+        <video 
              ref={remoteVideoRef} 
              autoPlay 
              playsInline 
-             className="w-full h-full object-contain"
-           />
-        ) : (
-           <div className="text-center">
+             className={cn(
+                 "w-full h-full object-contain",
+                 (!remoteStream || !isRemoteVideoActive) && "hidden" // Hide visually if no video
+             )}
+        />
+
+        {/* Placeholder (Overlay when no video) */}
+        {(!remoteStream || !isRemoteVideoActive) && (
+           <div className="text-center absolute inset-0 flex flex-col items-center justify-center z-10">
              <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-gray-800 flex items-center justify-center text-6xl font-bold text-gray-500 animate-pulse">
                 {outgoingCallUser?.displayName?.[0] || activeCall?.metadata?.name?.[0] || '?'}
              </div>
              <p className="text-xl text-white font-medium">
-                {callStatus === 'outgoing' ? 'Calling...' : 'Connecting...'}
+                {callStatus === 'outgoing' ? 'Calling...' : 
+                 callStatus === 'connected' ? 'No Video / Audio Only' : 'Connecting...'}
              </p>
              <p className="text-gray-400 text-sm mt-1">{outgoingCallUser?.displayName}</p>
            </div>
@@ -196,19 +246,45 @@ export const CallModal = () => {
            {isVideoOff ? <MdVideocamOff size={22} /> : <MdVideocam size={22} />}
          </button>
 
-         {!Capacitor.isNativePlatform() && (
-          <button 
-            onClick={toggleScreenShare}
-            disabled={!activeCall}
-            className={cn(
-                "p-3 rounded-xl transition-all hover:scale-110 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed",
-                isScreenSharing ? "bg-green-500 text-white" : "bg-gray-700/50 text-white hover:bg-gray-600"
-            )}
-            title={isScreenSharing ? "Stop Sharing" : "Share Screen"}
-          >
-            {isScreenSharing ? <MdStopScreenShare size={22} /> : <MdScreenShare size={22} />}
-          </button>
-         )}
+          {!Capacitor.isNativePlatform() && (
+             <div 
+               className="relative"
+               onMouseEnter={() => setShowTooltip(true)}
+               onMouseLeave={() => setShowTooltip(false)}
+             >
+               <button 
+                 onClick={() => {
+                    if (isScreenSharing) {
+                      toggleScreenShare(); // Stop sharing directly
+                    } else {
+                      setShowScreenShareModal(true); // Open modal to start
+                    }
+                  }}
+                 disabled={!activeCall || !canScreenShare}
+                 className={cn(
+                     "p-3 rounded-xl transition-all hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed",
+                     isScreenSharing ? "bg-green-500 text-white" : 
+                     !canScreenShare ? "bg-gray-800 text-gray-500 cursor-not-allowed" : 
+                     "bg-gray-700/50 text-white hover:bg-gray-600"
+                 )}
+                 title={canScreenShare ? (isScreenSharing ? "Stop Sharing" : "Share Screen") : undefined}
+               >
+                 {isScreenSharing ? <MdStopScreenShare size={22} /> : <MdScreenShare size={22} />}
+               </button>
+               
+               {!canScreenShare && (
+                 <div 
+                   className={cn(
+                     "absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-rose-500 text-xs font-bold rounded shadow-lg whitespace-nowrap transition-opacity pointer-events-none z-50",
+                     showTooltip ? "opacity-100" : "opacity-0"
+                   )}
+                 >
+                    Requires Premium 🚀
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-black"></div>
+                 </div>
+               )}
+             </div>
+          )}
 
          <div className="w-px h-8 bg-gray-700 mx-2" />
 
@@ -358,6 +434,20 @@ export const CallModal = () => {
              </button>
           </div>
       )}
+
+      {/* Modals */}
+      {showDeviceSettings && (
+         <DeviceSettingsModal 
+            isOpen={showDeviceSettings} 
+            onClose={() => setShowDeviceSettings(false)} 
+         />
+      )}
+
+      <ScreenShareModal 
+        isOpen={showScreenShareModal}
+        onClose={() => setShowScreenShareModal(false)}
+        onConfirm={(options) => toggleScreenShare(options)}
+      />
     </div>
     </Draggable>
   );

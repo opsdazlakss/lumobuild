@@ -9,10 +9,12 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage } from 'react-icons/md';
+import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch } from 'react-icons/md';
+import { PremiumSettings } from '../components/settings/PremiumSettings';
 
 // Settings categories
 const SETTINGS_TABS = [
+  { id: 'premium', label: 'Premium', icon: MdRocketLaunch, category: 'User Settings' },
   { id: 'account', label: 'My Account', icon: MdPerson, category: 'User Settings' },
   { id: 'status', label: 'Status', icon: MdCircle, category: 'User Settings' },
   { id: 'security', label: 'Privacy & Security', icon: MdSecurity, category: 'User Settings' },
@@ -210,6 +212,8 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'premium':
+        return <PremiumSettings />;
       case 'account':
         return (
           <div className="space-y-8">
@@ -613,7 +617,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-4 md:px-10 pb-10">
-          <div className="max-w-2xl mx-auto md:mx-0">
+          <div className={activeTab === 'premium' ? "w-full" : "max-w-2xl mx-auto md:mx-0"}>
             {renderTabContent()}
           </div>
         </div>

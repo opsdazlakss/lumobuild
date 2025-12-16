@@ -175,18 +175,17 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     if (!file) return;
 
     // File size limits
-    const isPremium = userRole === 'admin' || userRole === 'premium';
-    const maxSize = isPremium ? 200 * 1024 * 1024 : 10 * 1024 * 1024; // 200MB Premium (Soft Limit), 10MB Free
+    const isPremium = userRole === 'admin' || userRole === 'premium' || userProfile?.plan === 'premium';
+    const maxSize = isPremium ? 200 * 1024 * 1024 : 10 * 1024 * 1024; // 200MB vs 10MB
 
     if (file.size > maxSize) {
-      error(`File too large! The limit is ${isPremium ? '200MB' : '10MB'}.`);
+      error(`File too large! The limit is ${isPremium ? '200MB' : '10MB'}. ${!isPremium ? 'Upgrade to Premium for larger uploads.' : ''}`);
       return;
     }
 
     // Create preview
-    // For non-images, we won't show a visual preview, but we'll show an icon/name
     let url = null;
-    if (file.type.startsWith('image/')) {
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
         url = URL.createObjectURL(file);
     }
     setSelectedFile(file);
@@ -197,7 +196,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     // Reset input so same file can be selected again if cancelled
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
-
+  
   const handleFileSelect = (e) => {
     processFileSelection(e.target.files?.[0]);
   };

@@ -1,7 +1,23 @@
-const { app, BrowserWindow, dialog, desktopCapturer } = require('electron');
+const { app, BrowserWindow, dialog, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
+
+// ... (existing code)
+
+// IPC Handler for Screen Sources (Modern/Secure approach)
+ipcMain.handle('GET_SOURCES', async (event, opts) => {
+  try {
+    const sources = await desktopCapturer.getSources(opts);
+    // NativeImage serialization via IPC works, but let's be safe and return what we need.
+    // Serialization of nativeImage is handled by Electron.
+    return sources;
+  } catch (error) {
+    console.error('Error getting sources:', error);
+    return [];
+  }
+});
+
 
 // ... (existing code) ...
 
@@ -18,15 +34,16 @@ function createMainWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      sandbox: false, // Ensure Node integration works reliably
+      enableRemoteModule: true,
+      preload: path.join(__dirname, 'preload.cjs')
     },
     backgroundColor: '#2c2b31',
   });
 
   // Enable Screen Sharing (getDisplayMedia)
-  // Enable Screen Sharing (getDisplayMedia)
-  // DISABLE HARDCODED SELECTION: We will handle source selection in the Renderer process
-  // using desktopCapturer and getUserMedia for a custom UI.
-  /*
+  // Fallback Handler: If Renderer fails to specify a sourceId (detection fail),
+  // this handler picks the first screen to prevent 'NotSupportedError'.
   mainWindow.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
     desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
       // Grant access to the first screen available
@@ -41,7 +58,6 @@ function createMainWindow() {
       callback({ video: null, audio: null });
     });
   });
-  */
 
   mainWindow.setMenu(null);
 

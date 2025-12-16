@@ -4,6 +4,11 @@ import { Button } from '../shared/Button';
 
 // Safe electron require
 const getDesktopCapturer = () => {
+  if (window.electron && window.electron.desktopCapturer) {
+      return window.electron.desktopCapturer;
+  }
+  
+  // Fallback for older setups or direct require if somehow works
   if (window.require) {
     try {
       return window.require('electron').desktopCapturer;

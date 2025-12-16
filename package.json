@@ -1,7 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-  "version": "1.5.9",
+  "version": "1.6.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -43,7 +43,7 @@
     "productName": "Lumo",
     "files": [
       "dist/**/*",
-      "electron/main.cjs"
+      "electron/**/*"
     ],
     "directories": {
       "output": "dist"

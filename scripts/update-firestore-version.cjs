@@ -32,7 +32,7 @@ async function updateVersion() {
     await db.collection('system').doc('app_version').set({
       android: version,
       downloadUrl: downloadUrl,
-      forceUpdate: false, // Default to false, can be changed manually if needed
+      forceUpdate: true, // Default to false, can be changed manually if needed
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 

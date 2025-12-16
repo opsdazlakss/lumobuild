@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp, getDoc } from 'firebase/firestore';
+import { useSwipe } from '../hooks/useSwipe';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -39,6 +40,24 @@ export const MainApp = () => {
   const [showPinned, setShowPinned] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [showMobileUserList, setShowMobileUserList] = useState(false);
+
+  // Swipe Handlers
+  const swipeHandlers = useSwipe({
+    onSwipeLeft: () => {
+      // Swipe Left -> Open User List (only if not on home)
+      if (currentServer !== 'home') {
+          setShowMobileUserList(true);
+      }
+      // Also close sidebar if open
+      if (showMobileSidebar) setShowMobileSidebar(false);
+    },
+    onSwipeRight: () => {
+      // Swipe Right -> Open Sidebar
+      setShowMobileSidebar(true);
+      // Also close user list if open
+      if (showMobileUserList) setShowMobileUserList(false);
+    }
+  });
   const [showCreateServer, setShowCreateServer] = useState(false);
   const [showJoinServer, setShowJoinServer] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -215,7 +234,10 @@ export const MainApp = () => {
 
   return (
     <CallProvider>
-      <div className="flex h-screen bg-dark-bg overflow-hidden">
+      <div 
+        className="flex h-screen bg-dark-bg overflow-hidden"
+        {...swipeHandlers}
+      >
         {/* Desktop Sidebar (Hidden on Mobile) */}
         <div className="hidden md:flex h-full">
           <ServerSwitcher

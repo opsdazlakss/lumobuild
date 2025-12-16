@@ -66,18 +66,38 @@ function AuthRouter() {
   );
 }
 
+import { useEffect } from 'react';
+import NotificationService from './services/NotificationService';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 function App() {
+  // AuthContext is provided below, so we cannot use it here.
+  // NotificationWrapper inside AuthProvider will handle the logic.
   return (
     <ToastProvider>
       <ErrorBoundary>
         <AuthProvider>
-          <AuthRouter />
+          <NotificationWrapper>
+             <AuthRouter />
+          </NotificationWrapper>
         </AuthProvider>
       </ErrorBoundary>
     </ToastProvider>
   );
 }
+
+// Inner component to use existing AuthContext
+const NotificationWrapper = ({ children }) => {
+  const { currentUser } = useAuth();
+
+  useEffect(() => {
+    // Initialize notifications when the app mounts
+    // We pass currentUser?.uid so it can save the token if logged in.
+    // If not logged in, it might just register without saving to a user doc yet.
+    NotificationService.initialize(currentUser?.uid);
+  }, [currentUser]);
+
+  return children;
+};
 
 export default App;

@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "267697346186",
+    "firebase_url": "https://meydan-academy-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "meydan-academy",
+    "storage_bucket": "meydan-academy.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:267697346186:android:4c81a9185bf615d4d37f73",
+        "android_client_info": {
+          "package_name": "com.hasan.lumo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_D9shlYZdsX9RfeDcdLDYwY2N2wP_keE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -44,18 +44,26 @@ export const MainApp = () => {
   // Swipe Handlers
   const swipeHandlers = useSwipe({
     onSwipeLeft: () => {
-      // Swipe Left -> Open User List (only if not on home)
+      // If sidebar is open, swipe left should ONLY close it
+      if (showMobileSidebar) {
+        setShowMobileSidebar(false);
+        return; 
+      }
+      
+      // Otherwise, if nothing is open, Open User List
       if (currentServer !== 'home') {
           setShowMobileUserList(true);
       }
-      // Also close sidebar if open
-      if (showMobileSidebar) setShowMobileSidebar(false);
     },
     onSwipeRight: () => {
-      // Swipe Right -> Open Sidebar
+      // If user list is open, swipe right should ONLY close it
+      if (showMobileUserList) {
+        setShowMobileUserList(false);
+        return;
+      }
+
+      // Otherwise, if nothing is open, Open Sidebar
       setShowMobileSidebar(true);
-      // Also close user list if open
-      if (showMobileUserList) setShowMobileUserList(false);
     }
   });
   const [showCreateServer, setShowCreateServer] = useState(false);

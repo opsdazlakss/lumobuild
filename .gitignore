@@ -31,3 +31,7 @@ dist-ssr
 
 # Site file
 site.html
+
+# Mobile Configs
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist

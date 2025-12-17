@@ -6,6 +6,7 @@ import { db } from './firebase';
 let currentCachedToken = null;
 let currentUserId = null;
 let isInitialized = false;
+let lastError = null;
 
 const NotificationService = {
   initialize: async (userId) => {
@@ -18,11 +19,14 @@ const NotificationService = {
 
     // If already initialized and we just got a user ID, sync the cached token
     if (isInitialized) {
+      console.log('[FCM] Service already initialized. Current Token:', currentCachedToken ? 'HIDDEN' : 'NONE');
       if (currentUserId && currentCachedToken) {
         syncTokenWithFirestore(currentCachedToken);
       }
       return;
     }
+
+    console.log('[FCM] Initializing service...');
 
     // Check permissions
     let permStatus = await PushNotifications.checkPermissions();
@@ -32,17 +36,26 @@ const NotificationService = {
     }
 
     if (permStatus.receive !== 'granted') {
-      console.error('User denied permissions!');
+      const msg = 'User denied push notification permissions!';
+      console.error('[FCM]', msg);
+      lastError = msg;
       return;
     }
 
     // Register with Apple / Google to get token 'registration'
-    await PushNotifications.register();
+    try {
+      await PushNotifications.register();
+      console.log('[FCM] Registration request sent');
+    } catch (e) {
+      console.error('[FCM] Registration call failed:', e);
+      lastError = `Registration failed: ${e.message}`;
+    }
 
     // Listeners
     PushNotifications.addListener('registration', (token) => {
-      console.log('Push Registration Token:', token.value);
+      console.log('[FCM] Registration successful. Token length:', token.value.length);
       currentCachedToken = token.value;
+      lastError = null;
       
       if (currentUserId) {
         syncTokenWithFirestore(token.value);
@@ -50,7 +63,8 @@ const NotificationService = {
     });
 
     PushNotifications.addListener('registrationError', (error) => {
-      console.error('Error on registration:', error);
+      console.error('[FCM] Registration error event:', error);
+      lastError = `FCM Error: ${error.error}`;
     });
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
@@ -73,6 +87,10 @@ const NotificationService = {
 
   getToken: () => {
     return currentCachedToken;
+  },
+
+  getRegistrationError: () => {
+    return lastError;
   }
 };
 

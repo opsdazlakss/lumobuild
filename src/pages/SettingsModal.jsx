@@ -43,11 +43,18 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   });
   const [changingPassword, setChangingPassword] = useState(false);
   const [fcmToken, setFcmToken] = useState('');
+  const [fcmError, setFcmError] = useState('');
+
+  const refreshFcmInfo = () => {
+    const token = NotificationService.getToken();
+    const error = NotificationService.getRegistrationError();
+    if (token) setFcmToken(token);
+    if (error) setFcmError(error);
+  };
 
   useEffect(() => {
     if (isOpen && activeTab === 'about') {
-      const token = NotificationService.getToken();
-      if (token) setFcmToken(token);
+      refreshFcmInfo();
     }
   }, [isOpen, activeTab]);
 
@@ -576,12 +583,28 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
             {/* FCM Token for Testing */}
             <div className="bg-dark-bg rounded-lg p-4 mt-8 border border-brand-primary/20">
-              <h3 className="text-sm font-semibold text-brand-primary uppercase tracking-wide mb-4 flex items-center gap-2">
-                <MdRocketLaunch /> FCM Registration Token
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-brand-primary uppercase tracking-wide flex items-center gap-2">
+                  <MdRocketLaunch /> FCM Registration Token
+                </h3>
+                <button 
+                  onClick={refreshFcmInfo}
+                  className="text-[10px] bg-dark-hover px-2 py-1 rounded hover:text-brand-primary transition-colors"
+                >
+                  Check Again
+                </button>
+              </div>
+              
               <p className="text-xs text-dark-muted mb-4">
                 Use this token in the Firebase Console to test push notifications on this device.
               </p>
+
+              {fcmError && (
+                <div className="p-2 mb-4 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400 font-mono break-all">
+                  ERROR: {fcmError}
+                </div>
+              )}
+
               <div className="flex items-center gap-2 p-3 bg-dark-input rounded-lg border border-dark-hover">
                 <div className="flex-1 text-xs font-mono text-dark-text break-all">
                   {fcmToken || (Capacitor.isNativePlatform() ? 'Token not available yet. Please register for notifications.' : 'Not available on Web. Please check on a mobile device.')}

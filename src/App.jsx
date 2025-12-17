@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './context/ToastContext';
@@ -6,6 +6,8 @@ import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { MainApp } from './pages/MainApp';
+import NotificationService from './services/NotificationService';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 function AuthRouter() {
   const { currentUser, userProfile, loading } = useAuth();
@@ -66,9 +68,6 @@ function AuthRouter() {
   );
 }
 
-import { useEffect } from 'react';
-import NotificationService from './services/NotificationService';
-import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 function App() {
   // AuthContext is provided below, so we cannot use it here.
@@ -95,11 +94,6 @@ const NotificationWrapper = ({ children }) => {
     // We pass currentUser?.uid so it can save the token if logged in.
     // If not logged in, it might just register without saving to a user doc yet.
     NotificationService.initialize(currentUser?.uid);
-    
-    // Cleanup listeners when effect re-runs or component unmounts
-    return () => {
-      NotificationService.cleanup();
-    };
   }, [currentUser]);
 
   return children;

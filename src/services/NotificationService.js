@@ -1,16 +1,10 @@
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
-import { doc, setDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db } from './firebase';
 
 const NotificationService = {
-  // State to track token and user
-  _token: null,
-  _userId: null,
-
   initialize: async (userId) => {
-    NotificationService._userId = userId;
-
     // Only run on native platforms
     if (!Capacitor.isNativePlatform()) {
       console.log('Push notifications not supported on web/PWA');
@@ -32,55 +26,36 @@ const NotificationService = {
     // Register with Apple / Google to get token 'registration'
     await PushNotifications.register();
 
-    // If we already have a token and user, try to save again (idempotent)
-    if (NotificationService._token && NotificationService._userId) {
-      NotificationService.saveToken(NotificationService._token, NotificationService._userId);
-    }
-
     // Listeners
-    // Check if listener already added to prevent duplicates logic if initialize called multiple times
-    // (Though App.jsx handles cleanup, safety check doesn't hurt, but for now we rely on cleanup)
-    
-    PushNotifications.removeAllListeners(); // Ensure clean slate before adding
-    
     PushNotifications.addListener('registration', async (token) => {
       console.log('Push Registration Token:', token.value);
-      // DEBUG: Alert user
-      // alert('Token Generated: ' + token.value.substring(0, 10) + '...');
-      NotificationService._token = token.value;
       
-      if (NotificationService._userId) {
-        NotificationService.saveToken(token.value, NotificationService._userId);
-      } else {
-        console.log('Token received but no user logged in yet. Will save when user logs in.');
+      // Save token to Firestore if userId is provided
+      if (userId) {
+        try {
+          const userRef = doc(db, 'users', userId);
+          await updateDoc(userRef, {
+            fcmTokens: arrayUnion(token.value)
+          });
+          console.log('FCM token saved to Firestore');
+        } catch (error) {
+          console.error('Error saving FCM token to Firestore:', error);
+        }
       }
     });
 
     PushNotifications.addListener('registrationError', (error) => {
       console.error('Error on registration:', error);
-      alert('Registration Error: ' + JSON.stringify(error));
     });
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
       console.log('Push notification received: ', notification);
+      // You can add local logic here, e.g., showing a toast if in foreground
     });
 
     PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
       console.log('Push notification action performed', notification.actionId, notification.inputValue);
     });
-  },
-
-  saveToken: async (token, userId) => {
-    try {
-      console.log(`Attempting to save token for user: ${userId}`);
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, {
-        fcmTokens: arrayUnion(token)
-      }, { merge: true });
-      console.log('✅ FCM token saved to Firestore successfully');
-    } catch (error) {
-      console.error('❌ Error saving FCM token to Firestore:', error);
-    }
   },
 
   // Helper to remove listener (optional)

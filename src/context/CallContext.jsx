@@ -7,9 +7,6 @@ import { useToast } from './ToastContext';
 import { playIncomingRing, playOutgoingRing, stopRing } from '../utils/callSounds';
 import { hasCapability, CAPABILITIES } from '../utils/permissions';
 
-// Custom Soundboard Limits
-const MAX_SOUNDS = 10;
-const MAX_SOUND_SIZE_KB = 300; // Limit per sound to prevent lag storage issues
 
 const CallContext = createContext();
 
@@ -34,51 +31,7 @@ export const CallProvider = ({ children }) => {
   
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [dataConnection, setDataConnection] = useState(null); // P2P Data Channel for Soundboard
   
-  // Custom Sounds State
-  const [customSounds, setCustomSounds] = useState(() => {
-    try {
-        const saved = localStorage.getItem('dss_custom_sounds');
-        return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-        return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('dss_custom_sounds', JSON.stringify(customSounds));
-  }, [customSounds]);
-
-  const addSound = async (name, file) => {
-    if (customSounds.length >= MAX_SOUNDS) {
-        showError(`Maximum ${MAX_SOUNDS} sounds allowed.`);
-        return false;
-    }
-    if (file.size > MAX_SOUND_SIZE_KB * 1024) {
-        showError(`File too large. Max ${MAX_SOUND_SIZE_KB}KB.`);
-        return false;
-    }
-
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const newSound = {
-                id: Date.now().toString(),
-                name: name.trim() || 'Sound',
-                src: e.target.result // Base64
-            };
-            setCustomSounds(prev => [...prev, newSound]);
-            resolve(true);
-        };
-        reader.readAsDataURL(file);
-    });
-  };
-
-  const removeSound = (id) => {
-    setCustomSounds(prev => prev.filter(s => s.id !== id));
-  };
-
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   
@@ -87,47 +40,11 @@ export const CallProvider = ({ children }) => {
   const [selectedMicId, setSelectedMicId] = useState('');
   const [selectedCameraId, setSelectedCameraId] = useState('');
 
-  const playSound = (soundId) => {
-    const sound = customSounds.find(s => s.id === soundId);
-    if (!sound) return;
-
-    // 1. Play locally
-    const audio = new Audio(sound.src);
-    audio.volume = 0.5;
-    activeSoundsRef.current.push(audio);
-    
-    audio.onended = () => {
-        activeSoundsRef.current = activeSoundsRef.current.filter(a => a !== audio);
-    };
-    
-    audio.play().catch(e => console.error("Error playing sound:", e));
-
-    // 2. Send to Peer (Embed the data so they don't need it locally)
-    if (dataConnection && dataConnection.open) {
-        console.log("Sending sound effect:", sound.name);
-        dataConnection.send({ 
-            type: 'SOUND_EFFECT', 
-            payload: { src: sound.src, name: sound.name } 
-        });
-    } else {
-        console.warn("Cannot send sound effect. Data connection missing or closed.");
-    }
-  };
-
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const currentCallDocIdRef = useRef(null); // Firestore document ID for signaling
   const localStreamRef = useRef(null); // Ref to access stream in callbacks
   const activeCallRef = useRef(null); // Ref to valid active call
-  const activeSoundsRef = useRef([]); // Track active sound effects for cleanup
-
-  const stopAllSounds = () => {
-    activeSoundsRef.current.forEach(audio => {
-        audio.pause();
-        audio.currentTime = 0;
-    });
-    activeSoundsRef.current = [];
-  };
 
   const stopRingRef = useRef(null); // Ref to hold the sound stop function
 
@@ -222,44 +139,6 @@ export const CallProvider = ({ children }) => {
         console.error('PeerJS Error:', err);
         if (err.type !== 'peer-unavailable') {
             // silent fail for minor network blips
-        }
-    });
-
-    // Handle Incoming Data Connection (from Callee or Caller)
-    newPeer.on('connection', (conn) => {
-        console.log("Data connection received from peer:", conn.peer);
-        
-        conn.on('open', () => {
-             console.log("Data connection open event fired.");
-             setDataConnection(conn);
-        });
-
-        conn.on('data', (data) => {
-            if (data && data.type === 'SOUND_EFFECT' && data.payload?.src) {
-                console.log("Received sound effect:", data.payload.name);
-                const audio = new Audio(data.payload.src);
-                audio.volume = 0.5;
-                
-                activeSoundsRef.current.push(audio);
-                audio.onended = () => {
-                    activeSoundsRef.current = activeSoundsRef.current.filter(a => a !== audio);
-                };
-
-                audio.play().catch(e => console.error("Error playing remote sound:", e));
-            }
-        });
-        
-        conn.on('close', () => {
-            console.log("Data connection closed.");
-            setDataConnection(null);
-        });
-        
-        conn.on('error', (err) => console.error("Data connection error:", err));
-
-        // In case it's already open
-        if (conn.open) {
-             console.log("Data connection already open.");
-             setDataConnection(conn);
         }
     });
 
@@ -599,39 +478,6 @@ export const CallProvider = ({ children }) => {
         showError('Failed to connect to peer.');
         endCall();
     }
-    
-    // Establish Data Connection for Soundboard
-    // As Callee, we know the Caller's peer ID from incomingCall.peerId
-    try {
-        console.log("Establishing data connection to caller:", incomingCall.peerId);
-        const conn = peer.connect(incomingCall.peerId);
-        
-        conn.on('open', () => {
-            console.log("Data connection opened (Callee side)!");
-            setDataConnection(conn);
-        });
-        
-        conn.on('data', (data) => {
-             // Handle if Caller sends data back
-             if (data && data.type === 'SOUND_EFFECT' && data.payload?.src) {
-                const audio = new Audio(data.payload.src);
-                audio.volume = 0.5;
-                
-                activeSoundsRef.current.push(audio);
-                audio.onended = () => {
-                    activeSoundsRef.current = activeSoundsRef.current.filter(a => a !== audio);
-                };
-
-                audio.play().catch(e => console.error(e));
-             }
-        });
-
-        conn.on('close', () => setDataConnection(null));
-        conn.on('error', (err) => console.error("Data connection error (Callee):", err));
-        
-    } catch (e) {
-        console.error("Failed to establish data connection", e);
-    }
   };
 
   // 6. End Call (Both Sides)
@@ -670,13 +516,7 @@ export const CallProvider = ({ children }) => {
     setIncomingCall(null);
     setOutgoingCallUser(null);
     setIsMuted(false);
-    setIsMuted(false);
     setIsVideoOff(false);
-    if (dataConnection) {
-        dataConnection.close();
-        setDataConnection(null);
-    }
-    stopAllSounds(); // Stop any soundboard effects
 
     // 4. Cancel signaling if I was the caller and calling is pending
     if (currentCallDocIdRef.current && deleteSignalDoc && outgoingCallUser) {
@@ -1008,12 +848,8 @@ export const CallProvider = ({ children }) => {
     selectedCameraId,
     setSelectedMicId,
     setSelectedCameraId,
-    playSound,
-    customSounds,
-    addSound,
-    removeSound
+    refreshDevices
   };
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
 };
-

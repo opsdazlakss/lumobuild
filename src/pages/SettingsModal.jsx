@@ -9,35 +9,28 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch, MdPalette } from 'react-icons/md';
+import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch } from 'react-icons/md';
 import { PremiumSettings } from '../components/settings/PremiumSettings';
 
 // Settings categories
 const SETTINGS_TABS = [
   { id: 'premium', label: 'Premium', icon: MdRocketLaunch, category: 'User Settings' },
   { id: 'account', label: 'My Account', icon: MdPerson, category: 'User Settings' },
+  { id: 'status', label: 'Status', icon: MdCircle, category: 'User Settings' },
   { id: 'security', label: 'Privacy & Security', icon: MdSecurity, category: 'User Settings' },
   { id: 'about', label: 'About', icon: MdInfo, category: 'App Settings' },
 ];
 
 export const SettingsModal = ({ isOpen, onClose }) => {
   const { currentUser, userProfile } = useAuth();
-  const { success, error, info } = useToast();
+  const { success, error } = useToast();
   const [activeTab, setActiveTab] = useState('account');
   const [photoUrl, setPhotoUrl] = useState(userProfile?.photoUrl || '');
-  const [bannerUrl, setBannerUrl] = useState(userProfile?.bannerUrl || '');
-  const [themeColor, setThemeColor] = useState(userProfile?.themeColor || '#6366f1'); // Default indigo
   const [bio, setBio] = useState(userProfile?.bio || '');
   const [updating, setUpdating] = useState(false);
-  
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [photoProgress, setPhotoProgress] = useState({ progress: 0, speed: '' });
-  
-  const [uploadingBanner, setUploadingBanner] = useState(false);
-  const [bannerProgress, setBannerProgress] = useState({ progress: 0, speed: '' });
-
+  const [uploadProgress, setUploadProgress] = useState({ progress: 0, speed: '' });
   const profilePhotoInputRef = useRef(null);
-  const bannerInputRef = useRef(null);
   const [showStatusSelector, setShowStatusSelector] = useState(false);
   
   const [passwordData, setPasswordData] = useState({
@@ -47,13 +40,9 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   });
   const [changingPassword, setChangingPassword] = useState(false);
 
-  const isPremium = userProfile?.role === 'admin' || userProfile?.role === 'premium';
-
   // Reset form when profile changes
   useEffect(() => {
     setPhotoUrl(userProfile?.photoUrl || '');
-    setBannerUrl(userProfile?.bannerUrl || '');
-    setThemeColor(userProfile?.themeColor || '#6366f1');
     setBio(userProfile?.bio || '');
   }, [userProfile]);
 
@@ -101,12 +90,6 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    // GIF Avatar Restriction
-    if (file.type === 'image/gif' && !isPremium) {
-      error('Animated GIF avatars are for Premium members only!');
-      return;
-    }
-
     if (file.size > 10 * 1024 * 1024) {
       error('Image size must be less than 10MB');
       return;
@@ -115,7 +98,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     setUploadingPhoto(true);
     try {
       const imageUrl = await uploadToImgBB(file, (progress, speed) => {
-        setPhotoProgress({ progress, speed });
+        setUploadProgress({ progress, speed });
       });
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -129,80 +112,8 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       error('Failed to upload photo');
     } finally {
       setUploadingPhoto(false);
-      setPhotoProgress({ progress: 0, speed: '' });
+      setUploadProgress({ progress: 0, speed: '' });
       if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
-    }
-  };
-
-  const handleBannerFileUpload = async (file) => {
-    if (!file || !currentUser) return;
-
-    if (!isPremium) {
-      info('Custom banners are a Premium feature. Upgrade to unlock!');
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      error('Please select an image file');
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      error('Image size must be less than 10MB');
-      return;
-    }
-
-    setUploadingBanner(true);
-    try {
-      const imageUrl = await uploadToImgBB(file, (progress, speed) => {
-        setBannerProgress({ progress, speed });
-      });
-
-      await updateDoc(doc(db, 'users', currentUser.uid), {
-        bannerUrl: imageUrl,
-      });
-
-      setBannerUrl(imageUrl);
-      success('Banner updated successfully!');
-    } catch (err) {
-      console.error('Error uploading banner:', err);
-      error('Failed to upload banner');
-    } finally {
-      setUploadingBanner(false);
-      setBannerProgress({ progress: 0, speed: '' });
-      if (bannerInputRef.current) bannerInputRef.current.value = '';
-    }
-  };
-
-  const handleThemeColorChange = async (e) => {
-    const newColor = e.target.value;
-    setThemeColor(newColor);
-    
-    // We don't save immediately to avoid too many writes, 
-    // user should click a "Save" button or we debounce.
-    // For simplicity in this modal UI, let's add a "Save Appearance" button or save on blur.
-    // Actually, let's just save it.
-  };
-
-  const saveAppearance = async () => {
-    if (!currentUser) return;
-    if (!isPremium) {
-      info('Custom themes are a Premium feature!');
-      setThemeColor(userProfile?.themeColor || '#6366f1'); // Revert
-      return;
-    }
-
-    setUpdating(true);
-    try {
-      await updateDoc(doc(db, 'users', currentUser.uid), {
-        themeColor: themeColor,
-      });
-      success('Appearance updated!');
-    } catch (err) {
-      console.error('Error updating appearance:', err);
-      error('Failed to update appearance');
-    } finally {
-      setUpdating(false);
     }
   };
 
@@ -308,38 +219,21 @@ export const SettingsModal = ({ isOpen, onClose }) => {
           <div className="space-y-8">
             <h1 className="text-2xl font-bold text-dark-text">My Account</h1>
             
-            {/* Profile Card Preview */}
-            <div className="rounded-lg overflow-hidden border border-dark-hover relative min-h-[300px]" style={{ borderColor: themeColor }}>
-              {/* Full Background Image/Color */}
-              <div 
-                className="absolute inset-0 bg-cover bg-center transition-colors"
-                style={{ 
-                  backgroundColor: themeColor,
-                  backgroundImage: bannerUrl ? `url(${bannerUrl})` : `linear-gradient(to bottom right, ${themeColor}, #000)` 
-                }}
-              />
+            {/* Profile Card */}
+            <div className="bg-dark-bg rounded-lg overflow-hidden">
+              {/* Banner */}
+              <div className="h-24 bg-gradient-to-r from-brand-primary to-purple-600" />
               
-              {/* Dark Gradient Overlay for Readability */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-
-              {/* Premium GIF Badge */}
-              {bannerUrl?.endsWith('.gif') && (
-                  <div className="absolute top-2 right-2 px-2 py-1 bg-black/50 text-white text-[10px] rounded backdrop-blur-sm font-bold z-10">
-                    GIF
-                  </div>
-              )}
-              
-              {/* Profile Info Content */}
-              <div className="relative z-10 p-6 flex flex-col items-center justify-end h-full min-h-[300px] text-center mt-auto">
-                  {/* Avatar centered */}
-                  <div className="relative group mb-4">
+              {/* Profile Info */}
+              <div className="p-4 relative">
+                <div className="flex items-end gap-4 -mt-12">
+                  {/* Avatar */}
+                  <div className="relative">
                     {photoUrl ? (
                       <img 
-                        key={photoUrl}
                         src={photoUrl} 
                         alt="Profile"
-                        className="w-28 h-28 rounded-full object-cover border-4"
-                        style={{ borderColor: themeColor }}
+                        className="w-20 h-20 rounded-full object-cover border-4 border-dark-bg"
                         onError={(e) => {
                           e.target.style.display = 'none';
                           e.target.nextSibling.style.display = 'flex';
@@ -347,45 +241,26 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                       />
                     ) : null}
                     <div 
-                      className="w-28 h-28 rounded-full flex items-center justify-center text-white font-bold text-4xl border-4"
-                      style={{ 
-                        display: photoUrl ? 'none' : 'flex', 
-                        backgroundColor: themeColor, 
-                        borderColor: themeColor 
-                      }}
+                      className="w-20 h-20 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-2xl border-4 border-dark-bg"
+                      style={{ display: photoUrl ? 'none' : 'flex' }}
                     >
                       {userProfile?.displayName?.[0]?.toUpperCase() || 'U'}
                     </div>
-                    
-                    {/* Edit Overlay */}
-                    <div 
-                      className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border-4 border-transparent"
-                      onClick={() => profilePhotoInputRef.current?.click()}
-                    >
-                      <MdImage className="text-white" size={32} />
-                    </div>
                   </div>
                   
-                  {/* User Details */}
-                  <div className="space-y-1">
-                    <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2 shadow-black drop-shadow-md">
-                      {userProfile?.displayName}
-                      {isPremium && <MdRocketLaunch className="text-brand-primary" title="Premium Member" />}
-                    </h2>
-                    <p className="text-gray-200 text-sm font-medium shadow-black drop-shadow-md">{currentUser?.email}</p>
-                    <div className="flex justify-center gap-2 mt-3">
-                       <span className="text-xs px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white capitalize font-medium">
-                         {userProfile?.role || 'member'}
-                       </span>
-                    </div>
+                  <div className="flex-1 pb-2">
+                    <h2 className="text-xl font-bold text-dark-text">{userProfile?.displayName}</h2>
+                    <p className="text-dark-muted text-sm">{currentUser?.email}</p>
                   </div>
+                </div>
               </div>
             </div>
 
-            {/* Profile Photo Upload */}
+            {/* Profile Photo */}
             <div className="bg-dark-bg rounded-lg p-4">
               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Profile Photo</h3>
               
+              {/* File Upload */}
               <input
                 type="file"
                 ref={profilePhotoInputRef}
@@ -397,164 +272,54 @@ export const SettingsModal = ({ isOpen, onClose }) => {
               <div className="flex gap-3 mb-4">
                 <button
                   onClick={() => profilePhotoInputRef.current?.click()}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-dark-sidebar hover:bg-dark-hover border border-dark-hover text-dark-text rounded-lg transition-colors disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-primary hover:bg-brand-secondary text-white rounded-lg transition-colors disabled:opacity-50"
                   disabled={uploadingPhoto}
                 >
                   {uploadingPhoto ? (
-                     <span className="text-sm">Uploading {Math.round(photoProgress.progress)}%...</span>
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Uploading...
+                    </>
                   ) : (
                     <>
                       <MdUpload size={20} />
-                      Upload New Photo
+                      Upload Image
                     </>
                   )}
                 </button>
               </div>
               
-
-            </div>
-
-            {/* Profile Appearance (Premium) */}
-            <div className={`rounded-lg p-4 relative ${isPremium ? 'bg-dark-bg' : 'bg-dark-bg/50'}`}>
-               {!isPremium && (
-                 <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-[1px] rounded-lg flex flex-col items-center justify-center text-center p-4">
-                   <MdRocketLaunch size={32} className="text-brand-primary mb-2 animate-bounce" />
-                   <h3 className="text-lg font-bold text-white mb-1">Unlock Profile Appearance</h3>
-                   <p className="text-sm text-dark-muted mb-4 max-w-xs">Customize your banner, theme colors, and use animated GIFs with Premium.</p>
-                   <Button variant="primary" onClick={() => setActiveTab('premium')}>View Premium Plans</Button>
-                 </div>
-               )}
-
-               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-6 flex items-center gap-2">
-                 <MdPalette /> Profile Appearance <span className="text-xs normal-case px-2 py-0.5 bg-brand-primary/20 text-brand-primary rounded">Premium</span>
-               </h3>
-
-               {/* Banner Upload */}
-               <div className="mb-6">
-                 <label className="block text-sm font-medium text-dark-text mb-2">Profile Banner</label>
-                 <div className="flex gap-3">
-                   <input
-                    type="file"
-                    ref={bannerInputRef}
-                    onChange={(e) => handleBannerFileUpload(e.target.files?.[0])}
-                    accept="image/*"
-                    className="hidden"
-                   />
-                   <button
-                    onClick={() => bannerInputRef.current?.click()}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-8 border-2 border-dashed border-dark-hover hover:border-brand-primary rounded-lg text-dark-muted hover:text-brand-primary transition-colors disabled:opacity-50"
-                    disabled={uploadingBanner}
-                   >
-                     {uploadingBanner ? (
-                        <span>Uploading {Math.round(bannerProgress.progress)}%...</span>
-                     ) : (
-                       <div className="text-center">
-                         <MdImage size={24} className="mx-auto mb-1" />
-                         <div>Upload Banner Image</div>
-                         <div className="text-xs opacity-70">JPG, PNG, GIF</div>
-                       </div>
-                     )}
-                   </button>
-                   
-                   {bannerUrl && (
-                     <div className="w-32 h-24 rounded-lg overflow-hidden relative group shrink-0">
-                       <img src={bannerUrl} className="w-full h-full object-cover" />
-                       <button 
-                         onClick={() => {
-                           setBannerUrl('');
-                           updateDoc(doc(db, 'users', currentUser.uid), { bannerUrl: '' });
-                         }}
-                         className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-red-500 font-bold"
-                       >
-                         Remove
-                       </button>
-                     </div>
-                   )}
-                 </div>
-               </div>
-
-               {/* Theme Color Picker */}
-               <div className="mb-6">
-                 <label className="block text-sm font-medium text-dark-text mb-2">Theme Color</label>
-                 <div className="flex gap-4 items-center">
-                    <input 
-                      type="color" 
-                      value={themeColor}
-                      onChange={handleThemeColorChange}
-                      className="w-16 h-16 rounded-lg cursor-pointer bg-transparent border-0 p-0"
+              {/* Upload Progress */}
+              {uploadingPhoto && (
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs text-dark-muted mb-1">
+                    <span>{uploadProgress.speed}</span>
+                    <span>{Math.round(uploadProgress.progress)}%</span>
+                  </div>
+                  <div className="h-1 bg-dark-hover rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-brand-primary transition-all duration-200"
+                      style={{ width: `${uploadProgress.progress}%` }}
                     />
-                    <div>
-                      <div className="text-dark-text font-mono bg-dark-input px-3 py-1 rounded border border-dark-hover">
-                        {themeColor}
-                      </div>
-                      <div className="text-xs text-dark-muted mt-1">
-                        Select a color to accent your profile.
-                      </div>
-                    </div>
-                    <div className="flex-1 text-right">
-                       <Button onClick={saveAppearance} disabled={themeColor === userProfile?.themeColor}>
-                         Save Color
-                       </Button>
-                    </div>
-                 </div>
-               </div>
-            </div>
-
-            {/* Status Settings (Moved from separate tab) */}
-            <div className="bg-dark-bg rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Online Status</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {[
-                  { key: 'online', label: 'Online', color: 'bg-green-500', desc: 'Visible' },
-                  { key: 'idle', label: 'Idle', color: 'bg-yellow-500', desc: 'Away' },
-                  { key: 'dnd', label: 'Do Not Disturb', color: 'bg-red-500', desc: 'No notifications' },
-                  { key: 'invisible', label: 'Invisible', color: 'bg-gray-500', desc: 'Hidden' },
-                ].map((status) => (
-                  <button
-                    key={status.key}
-                    onClick={() => handlePresenceChange(status.key)}
-                    className={`p-3 rounded-lg border transition-all text-left flex items-center gap-3 ${
-                      userProfile?.presence === status.key || (!userProfile?.presence && status.key === 'online')
-                        ? 'border-brand-primary bg-brand-primary/10'
-                        : 'border-dark-hover hover:border-dark-muted bg-dark-sidebar'
-                    }`}
-                  >
-                    <span className={`w-3 h-3 rounded-full ${status.color}`} />
-                    <div>
-                      <div className="text-sm font-medium text-dark-text">{status.label}</div>
-                      <div className="text-[10px] text-dark-muted">{status.desc}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Custom Status */}
-            <div className={`bg-dark-bg rounded-lg p-4`}>
-               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Custom Status</h3>
-               {userProfile?.status ? (
-                 <div className="flex items-center justify-between p-3 bg-dark-sidebar rounded-lg">
-                   <div className="flex items-center gap-3">
-                     <span className="text-2xl">{userProfile.status.emoji}</span>
-                     <span className="text-dark-text">{userProfile.status.text}</span>
-                   </div>
-                   <div className="flex gap-2">
-                     <Button variant="secondary" onClick={() => setShowStatusSelector(true)}>
-                       Edit
-                     </Button>
-                     <Button variant="danger" onClick={() => handleStatusChange(null)}>
-                       Clear
-                     </Button>
-                   </div>
-                 </div>
-               ) : (
-                 <div className="text-center py-4 border border-dashed border-dark-hover rounded-lg">
-                   <p className="text-dark-muted text-sm mb-3">No custom status set</p>
-                   <Button variant="primary" size="sm" onClick={() => setShowStatusSelector(true)}>
-                     Set a Status
-                   </Button>
-                 </div>
-               )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Or use URL */}
+              <div className="text-xs text-dark-muted text-center mb-2">or paste image URL</div>
+              <Input
+                placeholder="https://example.com/photo.jpg"
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                className="mt-3 w-full"
+                onClick={handleUpdatePhoto}
+                disabled={updating || photoUrl === userProfile?.photoUrl || uploadingPhoto}
+              >
+                {updating ? 'Updating...' : 'Update from URL'}
+              </Button>
             </div>
 
             {/* Bio */}
@@ -610,7 +375,69 @@ export const SettingsModal = ({ isOpen, onClose }) => {
           </div>
         );
 
+      case 'status':
+        return (
+          <div className="space-y-8">
+            <h1 className="text-2xl font-bold text-dark-text">Status</h1>
+            
+            {/* Online Status */}
+            <div className="bg-dark-bg rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Online Status</h3>
+              <div className="grid grid-cols-1 gap-2">
+                {[
+                  { key: 'online', label: 'Online', color: 'bg-green-500', desc: 'Visible to others' },
+                  { key: 'idle', label: 'Idle', color: 'bg-yellow-500', desc: 'Away from keyboard' },
+                  { key: 'dnd', label: 'Do Not Disturb', color: 'bg-red-500', desc: 'Mute notifications' },
+                  { key: 'invisible', label: 'Invisible', color: 'bg-gray-500', desc: 'Appear offline to others' },
+                ].map((status) => (
+                  <button
+                    key={status.key}
+                    onClick={() => handlePresenceChange(status.key)}
+                    className={`p-4 rounded-lg border transition-all text-left flex items-center gap-4 ${
+                      userProfile?.presence === status.key || (!userProfile?.presence && status.key === 'online')
+                        ? 'border-brand-primary bg-brand-primary/10'
+                        : 'border-dark-hover hover:border-dark-muted bg-dark-sidebar'
+                    }`}
+                  >
+                    <span className={`w-4 h-4 rounded-full ${status.color}`} />
+                    <div>
+                      <div className="text-sm font-medium text-dark-text">{status.label}</div>
+                      <div className="text-xs text-dark-muted">{status.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
 
+            {/* Custom Status */}
+            <div className="bg-dark-bg rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Custom Status</h3>
+              {userProfile?.status ? (
+                <div className="flex items-center justify-between p-3 bg-dark-sidebar rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{userProfile.status.emoji}</span>
+                    <span className="text-dark-text">{userProfile.status.text}</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => setShowStatusSelector(true)}>
+                      Edit
+                    </Button>
+                    <Button variant="danger" onClick={() => handleStatusChange(null)}>
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-dark-muted mb-4">No custom status set</p>
+                  <Button variant="primary" onClick={() => setShowStatusSelector(true)}>
+                    Set a Status
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
 
       case 'security':
         return (
@@ -744,7 +571,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col md:flex-row" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col md:flex-row">
       {/* Sidebar - Horizontal on Mobile, Vertical on Desktop */}
       <div className="w-full md:w-56 bg-dark-sidebar flex flex-col shrink-0 border-b md:border-b-0 md:border-r border-dark-hover">
         <div className="flex md:flex-col overflow-x-auto md:overflow-y-auto py-2 md:py-4 px-2 gap-2 md:gap-0 no-scrollbar">

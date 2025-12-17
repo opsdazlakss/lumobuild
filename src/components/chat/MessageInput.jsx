@@ -2,10 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useToast } from '../../context/ToastContext';
-import { MdSend, MdClose, MdEmojiEmotions, MdGif, MdPoll, MdImage, MdAddCircle, MdAutoAwesome } from 'react-icons/md';
+import { MdSend, MdClose, MdEmojiEmotions, MdGif, MdPoll, MdImage, MdAddCircle } from 'react-icons/md';
 import { EmojiPicker } from '../shared/EmojiPicker';
 import { GifPicker } from './GifPicker';
-import { StickerPicker } from './StickerPicker';
 import { PollCreator } from './PollCreator';
 import { uploadToCloudinary } from '../../services/cloudinary';
 import { uploadToImgBB } from '../../services/imgbb';
@@ -19,7 +18,6 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showGifPicker, setShowGifPicker] = useState(false);
-  const [showStickerPicker, setShowStickerPicker] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [showPollCreator, setShowPollCreator] = useState(false);
   const [uploadState, setUploadState] = useState({ uploading: false, progress: 0, speed: '' });
@@ -30,7 +28,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
-  const { warning, error, info } = useToast();
+  const { warning, error } = useToast();
 
   // Check if user can send messages in this channel
   // Allow Owner, Admin and Moderator to bypass lock
@@ -85,49 +83,6 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     }
   };
 
-  const handleStickerSelect = async (stickerUrl) => {
-    setShowStickerPicker(false);
-    
-    // Check permissions
-    const isPremium = userRole === 'admin' || userRole === 'premium';
-    if (!isPremium) {
-      error('Stickers are for Premium members only!');
-      return;
-    }
-
-    try {
-      setSending(true);
-      const messageData = {
-        type: 'sticker',
-        text: stickerUrl, // URL in text field for compatibility
-        userId: userId,
-        timestamp: serverTimestamp(),
-        mentions: [],
-        replyTo: null
-      };
-
-      if (serverId) {
-        await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), messageData);
-      } else {
-        await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
-        await updateDoc(doc(db, 'dms', channelId), {
-          lastMessage: {
-            text: '✨ Sticker',
-            userId: userId,
-            timestamp: serverTimestamp()
-          },
-          updatedAt: serverTimestamp(),
-          hiddenFor: []
-        });
-      }
-    } catch (err) {
-      console.error('Error sending Sticker:', err);
-      error('Failed to send Sticker');
-    } finally {
-      setSending(false);
-    }
-  };
-
   // Handle poll submission
   const handlePollSubmit = async (pollData) => {
     if (!canSendMessage) return;
@@ -174,18 +129,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const processFileSelection = (file) => {
     if (!file) return;
 
-    // File size limits
-    const isPremium = userRole === 'admin' || userRole === 'premium' || userProfile?.plan === 'premium';
-    const maxSize = isPremium ? 200 * 1024 * 1024 : 10 * 1024 * 1024; // 200MB vs 10MB
-
-    if (file.size > maxSize) {
-      error(`File too large! The limit is ${isPremium ? '200MB' : '10MB'}. ${!isPremium ? 'Upgrade to Premium for larger uploads.' : ''}`);
+    // Check file size (max 40MB for unsigned Cloudinary free)
+    if (file.size > 40 * 1024 * 1024) {
+      error('File size must be less than 40MB');
       return;
     }
 
     // Create preview
+    // For non-images, we won't show a visual preview, but we'll show an icon/name
     let url = null;
-    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+    if (file.type.startsWith('image/')) {
         url = URL.createObjectURL(file);
     }
     setSelectedFile(file);
@@ -196,7 +149,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     // Reset input so same file can be selected again if cancelled
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
-  
+
   const handleFileSelect = (e) => {
     processFileSelection(e.target.files?.[0]);
   };
@@ -218,11 +171,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
     if (isModalOpen()) return;
     
     dragCounterRef.current++;
-    
-    // Only show overlay if dragging FILES (not text/images from within app)
-    const isFileDrag = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
-    
-    if (isFileDrag) {
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       setIsDragging(true);
     }
   };
@@ -684,18 +633,6 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           </div>
         )}
 
-        {/* Sticker Picker */}
-        {showStickerPicker && (
-          <div className="absolute bottom-full right-0 mb-4 w-[85vw] max-w-[400px] h-[450px] shadow-2xl rounded-lg z-50 animate-fade-in-up">
-             {/* Backdrop to close */}
-             <div 
-               className="fixed inset-0 z-[-1]" 
-               onClick={() => setShowStickerPicker(false)}
-             />
-             <StickerPicker onSelect={handleStickerSelect} />
-          </div>
-        )}
-
         {/* GIF Picker */}
         {showGifPicker && (
           <div className="absolute bottom-full right-0 mb-4 w-[85vw] max-w-[400px] h-[450px] shadow-2xl rounded-lg z-50">
@@ -737,11 +674,11 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           }}
           placeholder={!canSendMessage ? lockMessage : (userProfile?.isMuted ? 'You are muted' : 'Type a message...')}
           disabled={sending || userProfile?.isMuted || !canSendMessage || selectedFile !== null}
-          className="w-full bg-dark-input text-dark-text px-12 py-3 pr-48 rounded-lg
+          className="w-full bg-dark-input text-dark-text px-12 py-3 pr-36 rounded-lg
                      border border-transparent focus:border-brand-primary
                      outline-none transition-colors duration-200
                      placeholder:text-dark-muted
-                     disabled:opacity-50 disabled:cursor-not-allowed select-text"
+                     disabled:opacity-50 disabled:cursor-not-allowed"
         />
 
         {/* Drag Overlay */}
@@ -806,61 +743,39 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           className="hidden"
         />
         
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-           {/* GIF Button */}
-           <button
-             type="button"
-             onClick={() => setShowGifPicker(!showGifPicker)}
-             className="text-dark-muted hover:text-brand-primary
-                        transition-colors border-2 border-current rounded px-1 text-[10px] font-bold h-6 flex items-center justify-center mr-1"
-             title="Add GIF"
-           >
-             GIF
-           </button>
+        {/* Emoji Button */}
+        <button
+          type="button"
+          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+          className="absolute right-14 top-1/2 -translate-y-1/2
+                     text-dark-muted hover:text-brand-primary
+                     transition-colors"
+          title="Add emoji"
+        >
+          <MdEmojiEmotions size={24} />
+        </button>
 
-          {/* Sticker Button - Premium Only */}
-          {(() => {
-             const isPremium = 
-                userRole === 'admin' || 
-                userRole === 'premium' || 
-                userProfile?.badges?.includes('premium') ||
-                userProfile?.plan === 'premium';
-
-             if (!isPremium) return null;
-
-             return (
-               <button
-                 type="button"
-                 onClick={() => setShowStickerPicker(!showStickerPicker)}
-                 className={`transition-colors ${showStickerPicker ? 'text-brand-primary' : 'text-dark-muted hover:text-brand-primary'}`}
-                 title="Premium Stickers"
-               >
-                 <MdAutoAwesome size={24} />
-               </button>
-             );
-          })()}
-
-          {/* Emoji Button */}
-          <button
-            type="button"
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            className="text-dark-muted hover:text-brand-primary
-                       transition-colors"
-            title="Add emoji"
-          >
-            <MdEmojiEmotions size={24} />
-          </button>
-          
-          {/* Send Button */}
-          <button
-            type="submit"
-            disabled={!message.trim() || sending || userProfile?.isMuted || !canSendMessage}
-            className="text-dark-muted hover:text-brand-primary
-                       transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-1"
-          >
-            <MdSend size={24} />
-          </button>
-        </div>
+        {/* GIF Button */}
+        <button
+          type="button"
+          onClick={() => setShowGifPicker(!showGifPicker)}
+          className="absolute right-24 top-1/2 -translate-y-1/2
+                     text-dark-muted hover:text-brand-primary
+                     transition-colors border-2 border-current rounded px-1 text-[10px] font-bold h-6 flex items-center justify-center"
+          title="Add GIF"
+        >
+          GIF
+        </button>
+        
+        <button
+          type="submit"
+          disabled={!message.trim() || sending || userProfile?.isMuted || !canSendMessage}
+          className="absolute right-3 top-1/2 -translate-y-1/2
+                     text-dark-muted hover:text-brand-primary
+                     transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <MdSend size={24} />
+        </button>
       </form>
 
       {/* Poll Creator Modal */}

@@ -1,15 +1,9 @@
-const { app, BrowserWindow, dialog, desktopCapturer, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, dialog, desktopCapturer, ipcMain } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
-// Global state
-let splashWindow = null;
-let mainWindow = null;
-let tray = null;
-let isQuitting = false;
-
-// ... (existing code handles)
+// ... (existing code)
 
 // IPC Handler for Screen Sources (Modern/Secure approach)
 ipcMain.handle('GET_SOURCES', async (event, opts) => {
@@ -26,55 +20,6 @@ ipcMain.handle('GET_SOURCES', async (event, opts) => {
 
 
 // ... (existing code) ...
-
-function createTray() {
-  const iconPath = path.join(__dirname, '../public/lumo-logo.png');
-  tray = new Tray(iconPath);
-  tray.setToolTip('Lumo');
-
-  const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Open Lumo', 
-      click: () => {
-        if (mainWindow) {
-            mainWindow.show();
-            mainWindow.focus();
-        }
-      } 
-    },
-    { type: 'separator' },
-    { 
-      label: 'Quit Lumo', 
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      } 
-    }
-  ]);
-
-  tray.setContextMenu(contextMenu);
-
-  tray.on('click', () => {
-    if (mainWindow) {
-        if (mainWindow.isVisible()) {
-            if (mainWindow.isMinimized()) {
-                mainWindow.restore();
-            } else {
-                mainWindow.focus();
-            }
-        } else {
-            mainWindow.show();
-        }
-    }
-  });
-
-  tray.on('double-click', () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-}
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -116,15 +61,6 @@ function createMainWindow() {
 
   mainWindow.setMenu(null);
 
-  // Handle Minimize to Tray
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
-      return false;
-    }
-  });
-
   const isDev = !app.isPackaged;
   
   if (isDev) {
@@ -146,6 +82,9 @@ function createMainWindow() {
 // Configure logging
 log.transports.file.level = 'info';
 autoUpdater.logger = log;
+
+let splashWindow = null;
+let mainWindow = null;
 
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
@@ -204,7 +143,6 @@ autoUpdater.on('update-not-available', (info) => {
   // Launch main app after short delay
   setTimeout(() => {
     createMainWindow();
-    createTray(); // Create Tray
   }, 500);
 });
 
@@ -214,7 +152,6 @@ autoUpdater.on('error', (err) => {
   // Launch main app even if update check fails
   setTimeout(() => {
     createMainWindow();
-    createTray(); // Create Tray
   }, 500);
 });
 
@@ -244,7 +181,6 @@ app.whenReady().then(() => {
     // In development, skip splash and go directly to main window
     createMainWindow();
     mainWindow.show();
-    createTray(); // Create Tray in Dev
   } else {
     // In production, show splash and check for updates
     createSplashWindow();
@@ -255,11 +191,6 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createMainWindow();
     }
-  });
-  
-  // Before quit handler to ensure we allow quitting
-  app.on('before-quit', () => {
-      isQuitting = true;
   });
 });
 

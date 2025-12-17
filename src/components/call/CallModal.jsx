@@ -5,7 +5,7 @@ import { ScreenShareModal } from './ScreenShareModal';
 import { DeviceSettingsModal } from './DeviceSettingsModal';
 import { hasCapability, CAPABILITIES } from '../../utils/permissions';
 
-import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdScreenShare, MdStopScreenShare, MdVolumeUp, MdVolumeOff, MdVolumeMute, MdSettings, MdFullscreen, MdFullscreenExit, MdGraphicEq, MdDelete, MdAdd } from 'react-icons/md';
+import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdScreenShare, MdStopScreenShare, MdVolumeUp, MdVolumeOff, MdVolumeMute, MdSettings, MdFullscreen, MdFullscreenExit } from 'react-icons/md';
 import { FaPhone } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
 import Draggable from 'react-draggable';
@@ -32,11 +32,7 @@ export const CallModal = () => {
     selectedMicId,
     selectedCameraId,
     setSelectedMicId,
-    setSelectedCameraId,
-    playSound,
-    customSounds,
-    addSound,
-    removeSound
+    setSelectedCameraId
   } = useCall();
 
   const localVideoRef = useRef(null);
@@ -49,29 +45,9 @@ export const CallModal = () => {
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showScreenShareModal, setShowScreenShareModal] = useState(false);
-  const [showSoundboard, setShowSoundboard] = useState(false);
   
-  const { userProfile } = useAuth(); // used for capabilities
-  const { role } = useAuth(); // Assuming useAuth exposes role for easier check, or derived from profile
-  
-  // Robust Premium Check: Roles, Plan, OR Badge
-  const isPremium = 
-    userProfile?.roles?.includes('premium') || 
-    userProfile?.roles?.includes('admin') || 
-    userProfile?.plan === 'premium' ||
-    userProfile?.badges?.includes('premium');
-  
+  const { userProfile } = useAuth();
   const canScreenShare = hasCapability(userProfile, CAPABILITIES.SCREEN_SHARE);
-  
-  const fileInputRef = useRef(null);
-
-  const handleFileSelect = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const name = file.name.split('.')[0].slice(0, 10); // Auto name
-    await addSound(name, file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
 
   const [isRemoteVideoActive, setIsRemoteVideoActive] = useState(false);
 
@@ -126,24 +102,12 @@ export const CallModal = () => {
     }
   }, [remoteVolume, remoteStream]);
 
-  // Reset UI state when call ends
-  useEffect(() => {
-    if (callStatus === 'idle') {
-      setIsMinimized(false);
-      setShowSoundboard(false);
-      setShowDeviceSettings(false);
-      setShowScreenShareModal(false);
-      setShowVolumeSlider(false);
-      setShowTooltip(false);
-    }
-  }, [callStatus]);
-
   if (callStatus === 'idle') return null;
 
   // 1. Incoming Call UI
   if (callStatus === 'incoming') {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
         <div className="bg-dark-sidebar p-6 rounded-2xl shadow-2xl w-80 text-center border border-dark-hover">
           <div className="w-24 h-24 mx-auto mb-4 relative">
              {incomingCall?.callerPhotoUrl ? (
@@ -190,8 +154,6 @@ export const CallModal = () => {
       onStop={() => setIsDragging(false)}
     >
     <div 
-      role="dialog"
-      aria-modal="true"
       ref={draggableRef}
       style={!isMinimized ? { transform: 'none !important' } : undefined}
       className={cn(
@@ -364,92 +326,6 @@ export const CallModal = () => {
              </div>
            )}
          </div>
-
-          {/* Soundboard Button */}
-          <div className="relative">
-            <button
-              onClick={() => setShowSoundboard(!showSoundboard)}
-              className={cn(
-                  "p-3 rounded-xl transition-all hover:scale-110 active:scale-95",
-                  showSoundboard ? "bg-brand-primary/20 text-brand-primary" : "bg-gray-700/50 text-white hover:bg-gray-600"
-              )}
-              title="Soundboard"
-            >
-              <MdGraphicEq size={22} />
-            </button>
-            
-            {/* Soundboard Popup */}
-            {showSoundboard && (
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 bg-gray-900/95 backdrop-blur-md border border-gray-700 rounded-xl shadow-2xl p-4 animate-fade-in-up z-50">
-                  <h4 className="text-white text-sm font-semibold mb-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <MdGraphicEq className="text-brand-primary" />
-                        Soundboard
-                      </div>
-                      <span className="text-[10px] text-gray-400">{customSounds.length}/10</span>
-                  </h4>
-                  
-                  <div className="flex flex-col gap-1 mb-3 max-h-48 overflow-y-auto custom-scrollbar">
-                      {customSounds.length === 0 && (
-                          <div className="text-center text-gray-500 text-xs py-4 italic">
-                              No sounds added yet.
-                          </div>
-                      )}
-                      
-                      {customSounds.map(sound => (
-                          <div key={sound.id} className="relative group flex items-center gap-2">
-                            <button
-                                onClick={() => {
-                                    if (!isPremium) return; 
-                                    playSound(sound.id);
-                                }}
-                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white text-xs py-2 px-3 rounded-lg transition-colors border border-gray-700 hover:border-brand-primary flex items-center gap-3 active:scale-95"
-                            >
-                                <span className="text-sm">🔊</span>
-                                <span className="text-xs font-medium truncate flex-1 text-left">{sound.name}</span>
-                            </button>
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeSound(sound.id);
-                                }}
-                                className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-lg p-2 transition-colors opacity-0 group-hover:opacity-100"
-                                title="Remove sound"
-                            >
-                                <MdDelete size={14} />
-                            </button>
-                          </div>
-                      ))}
-                  </div>
-
-                  {/* Add Sound Button */}
-                  {customSounds.length < 10 && (
-                      <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full py-2 border border-dashed border-gray-600 text-gray-400 rounded-lg hover:border-brand-primary hover:text-brand-primary transition-colors flex items-center justify-center gap-2 text-xs"
-                      >
-                        <MdAdd size={14} /> Add Sound (MP3/WAV)
-                      </button>
-                  )}
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept="audio/mp3,audio/wav,audio/mpeg" 
-                    onChange={handleFileSelect}
-                  />
-                  
-                  {!isPremium && (
-                     <div className="absolute inset-0 bg-black/80 flex items-center justify-center rounded-xl p-4 text-center">
-                        <div>
-                            <p className="text-brand-primary font-bold mb-1">Premium Only</p>
-                            <p className="text-white text-xs">Unlock Soundboard with Premium!</p>
-                        </div>
-                     </div>
-                  )}
-              </div>
-            )}
-          </div>
 
          {/* Device Settings */}
          <div className="relative">

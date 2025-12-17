@@ -1,19 +1,15 @@
-import { MdRocketLaunch, MdCheck, MdDiamond, MdScreenShare, MdSupportAgent, MdStar, MdClose, MdKeyboardArrowDown, MdEmojiEmotions, MdGraphicEq } from 'react-icons/md';
+import { MdRocketLaunch, MdCheck, MdDiamond, MdScreenShare, MdSupportAgent, MdStar, MdClose, MdKeyboardArrowDown } from 'react-icons/md';
 import { Button } from '../shared/Button';
 import { useState } from 'react';
-import { useToast } from '../../context/ToastContext';
 
 const ComparisonTable = () => {
   const features = [
-    { name: "Screen Sharing", free: "❌", premium: "1080p 60fps" },
+    { name: "Screen Sharing", free: "720p 30fps", premium: "1080p 60fps" },
     { name: "Profile Badge", free: "❌", premium: "✅" },
     { name: "Custom Backgrounds", free: "❌", premium: "✅" },
-    { name: "Upload Limit", free: "10MB", premium: "200MB" },
-    { name: "GIF Avatar", free: "❌", premium: "✅" },
-    { name: "Animated Banner", free: "❌", premium: "✅" },
-    { name: "Profile Themes", free: "❌", premium: "✅" },
-    { name: "Exclusive Stickers", free: "❌", premium: "✅" },
-    { name: "Soundboard", free: "❌", premium: "✅" },
+    { name: "Upload Limit", free: "10 MB", premium: "100 MB" },
+    { name: "Priority Support", free: "❌", premium: "✅" },
+    { name: "Server Boosts", free: "❌", premium: "2x Boosts" },
   ];
 
   return (
@@ -40,16 +36,16 @@ const FAQItem = ({ question, answer }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="">
+    <div className="border-b border-dark-hover last:border-0">
       <button 
-        className="w-full flex items-center justify-between p-5 text-left font-medium text-dark-text hover:text-white transition-colors"
+        className="w-full flex items-center justify-between py-4 text-left font-medium text-dark-text hover:text-white transition-colors"
         onClick={() => setIsOpen(!isOpen)}
       >
         <span>{question}</span>
         <MdKeyboardArrowDown className={`transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} size={20} />
       </button>
-      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
-        <p className="text-sm text-dark-muted leading-relaxed px-5 pb-5 pt-0">
+      <div className={`overflow-hidden transition-all duration-300 ${isOpen ? 'max-h-40 opacity-100 mb-4' : 'max-h-0 opacity-0'}`}>
+        <p className="text-sm text-dark-muted leading-relaxed">
           {answer}
         </p>
       </div>
@@ -58,7 +54,6 @@ const FAQItem = ({ question, answer }) => {
 };
 
 export const PremiumSettings = () => {
-  const { info } = useToast();
   const benefits = [
     {
       icon: MdScreenShare,
@@ -77,23 +72,9 @@ export const PremiumSettings = () => {
     {
       icon: MdStar,
       title: "Custom Profile Backgrounds",
-      description: "Personalize your profile with custom banner images.",
+      description: "Personalize your profile with custom banner images (Coming Soon).",
       color: "text-yellow-400",
       bg: "bg-yellow-400/10"
-    },
-    {
-      icon: MdEmojiEmotions,
-      title: "Exclusive Stickers",
-      description: "Access a library of premium stickers and custom emojis.",
-      color: "text-orange-400",
-      bg: "bg-orange-400/10"
-    },
-    {
-      icon: MdGraphicEq,
-      title: "Soundboard",
-      description: "Play fun sound effects in voice channels.",
-      color: "text-pink-400",
-      bg: "bg-pink-400/10"
     },
     {
       icon: MdSupportAgent,
@@ -170,7 +151,7 @@ export const PremiumSettings = () => {
               {benefits.map((benefit, index) => (
                 <div 
                   key={index}
-                  className="group relative overflow-hidden p-5 rounded-xl bg-dark-sidebar border border-dark-hover hover:border-brand-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-brand-primary/10 hover:-translate-y-1"
+                  className="group relative overflow-hidden p-4 rounded-xl bg-dark-sidebar border border-dark-hover hover:border-brand-primary/50 transition-all duration-300 hover:shadow-xl hover:shadow-brand-primary/10 hover:-translate-y-1"
                   style={{ animationDelay: `${index * 100}ms` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none"></div>
@@ -211,7 +192,7 @@ export const PremiumSettings = () => {
                 
                 <button 
                   className="relative overflow-hidden px-10 py-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 rounded-xl text-white font-bold shadow-lg transform transition-all hover:scale-105 active:scale-95 shine-effect whitespace-nowrap"
-                  onClick={() => info('Ödeme sistemi şu anda bakımda.')}
+                  onClick={() => window.open('https://buy.stripe.com/test', '_blank')}
                 >
                   <span className="relative z-10 flex items-center gap-2">
                       Subscribe Now <MdRocketLaunch />
@@ -232,21 +213,17 @@ export const PremiumSettings = () => {
               <ComparisonTable />
            </div>
 
-        </div>
-      </div>
-
-      {/* FAQ Section - Full Width at Bottom */}
-      <div className="mt-12">
-        <h2 className="text-xl font-bold text-dark-text mb-6 flex items-center gap-2">
-          <span className="w-1 h-6 bg-gray-500 rounded-full"></span>
-          Common Questions
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {faqs.map((faq, i) => (
-            <div key={i} className="bg-dark-sidebar rounded-xl border border-dark-hover overflow-hidden">
-               <FAQItem question={faq.q} answer={faq.a} />
-            </div>
-          ))}
+           <div>
+              <h2 className="text-xl font-bold text-dark-text mb-6 flex items-center gap-2">
+                <span className="w-1 h-6 bg-gray-500 rounded-full"></span>
+                Common Questions
+              </h2>
+              <div className="bg-dark-sidebar rounded-xl p-4 border border-dark-hover">
+                {faqs.map((faq, i) => (
+                  <FAQItem key={i} question={faq.q} answer={faq.a} />
+                ))}
+              </div>
+           </div>
         </div>
       </div>
     </div>

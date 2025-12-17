@@ -45,6 +45,8 @@ const NotificationService = {
     
     PushNotifications.addListener('registration', async (token) => {
       console.log('Push Registration Token:', token.value);
+      // DEBUG: Alert user
+      // alert('Token Generated: ' + token.value.substring(0, 10) + '...');
       NotificationService._token = token.value;
       
       if (NotificationService._userId) {
@@ -56,6 +58,7 @@ const NotificationService = {
 
     PushNotifications.addListener('registrationError', (error) => {
       console.error('Error on registration:', error);
+      alert('Registration Error: ' + JSON.stringify(error));
     });
 
     PushNotifications.addListener('pushNotificationReceived', (notification) => {

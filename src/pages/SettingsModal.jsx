@@ -11,6 +11,9 @@ import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch } from 'react-icons/md';
 import { PremiumSettings } from '../components/settings/PremiumSettings';
+import NotificationService from '../services/NotificationService';
+import { MdContentCopy } from 'react-icons/md';
+import { Capacitor } from '@capacitor/core';
 
 // Settings categories
 const SETTINGS_TABS = [
@@ -39,6 +42,14 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     confirmPassword: '',
   });
   const [changingPassword, setChangingPassword] = useState(false);
+  const [fcmToken, setFcmToken] = useState('');
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'about') {
+      const token = NotificationService.getToken();
+      if (token) setFcmToken(token);
+    }
+  }, [isOpen, activeTab]);
 
   // Reset form when profile changes
   useEffect(() => {
@@ -560,6 +571,33 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                        </a>
                      </div>
                   </div>
+              </div>
+            </div>
+
+            {/* FCM Token for Testing */}
+            <div className="bg-dark-bg rounded-lg p-4 mt-8 border border-brand-primary/20">
+              <h3 className="text-sm font-semibold text-brand-primary uppercase tracking-wide mb-4 flex items-center gap-2">
+                <MdRocketLaunch /> FCM Registration Token
+              </h3>
+              <p className="text-xs text-dark-muted mb-4">
+                Use this token in the Firebase Console to test push notifications on this device.
+              </p>
+              <div className="flex items-center gap-2 p-3 bg-dark-input rounded-lg border border-dark-hover">
+                <div className="flex-1 text-xs font-mono text-dark-text break-all">
+                  {fcmToken || (Capacitor.isNativePlatform() ? 'Token not available yet. Please register for notifications.' : 'Not available on Web. Please check on a mobile device.')}
+                </div>
+                {fcmToken && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(fcmToken);
+                      success('FCM Token copied to clipboard!');
+                    }}
+                    className="p-2 bg-dark-hover hover:bg-dark-sidebar text-brand-primary rounded-md transition-colors"
+                    title="Copy Token"
+                  >
+                    <MdContentCopy size={18} />
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -95,6 +95,11 @@ const NotificationWrapper = ({ children }) => {
     // We pass currentUser?.uid so it can save the token if logged in.
     // If not logged in, it might just register without saving to a user doc yet.
     NotificationService.initialize(currentUser?.uid);
+    
+    // Cleanup listeners when effect re-runs or component unmounts
+    return () => {
+      NotificationService.cleanup();
+    };
   }, [currentUser]);
 
   return children;

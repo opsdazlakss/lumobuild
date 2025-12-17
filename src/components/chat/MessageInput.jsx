@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, updateDoc, increment } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useToast } from '../../context/ToastContext';
-import { MdSend, MdClose, MdEmojiEmotions, MdGif, MdPoll, MdImage, MdAddCircle, MdAutoAwesome, MdMic, MdDelete } from 'react-icons/md';
+import { MdSend, MdClose, MdEmojiEmotions, MdGif, MdPoll, MdImage, MdAddCircle, MdAutoAwesome } from 'react-icons/md';
 import { EmojiPicker } from '../shared/EmojiPicker';
 import { GifPicker } from './GifPicker';
 import { StickerPicker } from './StickerPicker';
@@ -27,13 +27,6 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const [previewUrl, setPreviewUrl] = useState(null);
   const [imageCaption, setImageCaption] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const timerIntervalRef = useRef(null);
-  const shouldSendRef = useRef(false);
-
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef(null);
   const inputRef = useRef(null);
@@ -339,127 +332,7 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
       console.error('Error uploading file:', err);
       error('Failed to upload file');
     } finally {
-      setUploadState({ uploading: false, progress: 0, speed: '', statusText: '' });
-    }
-  };
-
-  // --- Voice Recording Logic ---
-
-  const startRecording = async () => {
-    if (!canSendMessage) return;
-    
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      shouldSendRef.current = false; // Default to not sending (until explicitly stopped)
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = () => {
-        // Stop all tracks to release mic
-        stream.getTracks().forEach(track => track.stop());
-
-        if (shouldSendRef.current) {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            handleSendAudio(audioBlob);
-        }
-        // Always clear chunks after processing
-        audioChunksRef.current = [];
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingDuration(0);
-
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1);
-      }, 1000);
-
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      if (err.name === 'NotAllowedError') { // Permission denied
-          error("Microphone permission denied. Please enable it in browser settings.");
-      } else {
-          error("Could not access microphone.");
-      }
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      shouldSendRef.current = true; // Mark as intended to send
-      mediaRecorderRef.current.stop(); // This triggers onstop
-      clearInterval(timerIntervalRef.current);
-      setIsRecording(false);
-    }
-  };
-
-  const cancelRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-        shouldSendRef.current = false; // Mark as cancelled
-        mediaRecorderRef.current.stop(); // This triggers onstop
-        clearInterval(timerIntervalRef.current);
-        setIsRecording(false);
-    }
-  };
-
-  const handleSendAudio = async (audioBlob) => {
-    if (!audioBlob || audioBlob.size === 0) return;
-
-    // Create a File object from Blob for Cloudinary
-    // Use unique filename to prevent caching/overwriting issues
-    const fileName = `voice_message_${Date.now()}.webm`;
-    const audioFile = new File([audioBlob], fileName, { type: "audio/webm" });
-
-    try {
-       setUploadState({ uploading: true, progress: 0, speed: '0 KB/s', statusText: 'Sending Voice Message...' });
-       
-       // Upload to Cloudinary (resource_type: video handles audio)
-       const result = await uploadToCloudinary(audioFile, (progress, speed) => {
-         setUploadState({ uploading: true, progress, speed, statusText: 'Sending Voice Message...' });
-       });
-
-       // Send Message
-       const messageData = {
-        type: 'audio',
-        text: result.url, // URL stored in text field
-        metadata: {
-            duration: recordingDuration,
-            format: result.format,
-            bytes: result.bytes
-        },
-        userId: userId,
-        timestamp: serverTimestamp(),
-        mentions: [],
-        replyTo: null
-      };
-
-      if (serverId) {
-        await addDoc(collection(db, 'servers', serverId, 'channels', channelId, 'messages'), messageData);
-      } else {
-        await addDoc(collection(db, 'dms', channelId, 'messages'), messageData);
-        await updateDoc(doc(db, 'dms', channelId), {
-          lastMessage: {
-            text: '🎤 Voice Message',
-            userId: userId,
-            timestamp: serverTimestamp()
-          },
-          updatedAt: serverTimestamp(),
-          hiddenFor: []
-        });
-      }
-
-    } catch (err) {
-        console.error("Error sending voice message:", err);
-        error("Failed to send voice message");
-    } finally {
-        setUploadState({ uploading: false, progress: 0, speed: '', statusText: '' });
+      setUploadState({ uploading: false, progress: 0, speed: '' });
     }
   };
 
@@ -717,41 +590,11 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           />
         )}
 
-        {/* Recording UI overlay or Mic Button */}
-        {isRecording ? (
-             <div className="absolute inset-x-0 top-0 bottom-0 bg-dark-input rounded-lg flex items-center justify-between px-4 z-20 border border-red-500/50 animate-pulse-border">
-                <div className="flex items-center gap-3">
-                   <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                   <span className="text-dark-text font-mono font-medium">
-                      {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
-                   </span>
-                </div>
-                <div className="flex items-center gap-3">
-                   <button 
-                     type="button"
-                     onClick={cancelRecording}
-                     className="p-2 text-dark-muted hover:text-red-400 transition-colors"
-                     title="Cancel"
-                   >
-                      <MdDelete size={22} />
-                   </button>
-                   <button 
-                     type="button"
-                     onClick={stopRecording}
-                     className="p-2 text-red-500 hover:text-red-400 transition-colors bg-red-500/10 rounded-full"
-                     title="Send"
-                   >
-                      <MdSend size={22} />
-                   </button>
-                </div>
-             </div>
-        ) : null}
-
         {/* Upload Progress Bar */}
         {uploadState.uploading && (
           <div className="absolute -top-12 left-0 right-0 bg-dark-sidebar border border-dark-hover rounded-lg p-2 shadow-lg animate-fade-in-up z-50">
             <div className="flex items-center justify-between text-xs text-dark-text mb-1">
-              <span className="font-semibold">{uploadState.statusText || 'Uploading...'}</span>
+              <span className="font-semibold">Uploading Image...</span>
               <span className="text-dark-muted">{Math.round(uploadState.progress)}% • {uploadState.speed}</span>
             </div>
             <div className="h-1.5 bg-dark-hover rounded-full overflow-hidden">
@@ -1008,19 +851,6 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
             <MdEmojiEmotions size={24} />
           </button>
           
-          {/* Mic Button - Integrated */}
-          {!message.trim() && (
-            <button
-                type="button"
-                onClick={startRecording}
-                className="text-dark-muted hover:text-brand-primary transition-colors"
-                title="Record Voice Message"
-                disabled={sending || userProfile?.isMuted || !canSendMessage}
-            >
-                <MdMic size={24} />
-            </button>
-          )}
-
           {/* Send Button */}
           <button
             type="submit"

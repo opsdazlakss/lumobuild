@@ -7,7 +7,7 @@ import { Input } from '../components/shared/Input';
 import { StatusSelector } from '../components/shared/StatusSelector';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { uploadToCloudinary } from '../services/cloudinary';
+import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch, MdPalette } from 'react-icons/md';
 import { PremiumSettings } from '../components/settings/PremiumSettings';
@@ -114,16 +114,15 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
     setUploadingPhoto(true);
     try {
-      // Use Cloudinary for reliable delivery
-      const result = await uploadToCloudinary(file, (progress, speed) => {
+      const imageUrl = await uploadToImgBB(file, (progress, speed) => {
         setPhotoProgress({ progress, speed });
       });
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        photoUrl: result.url,
+        photoUrl: imageUrl,
       });
 
-      setPhotoUrl(result.url);
+      setPhotoUrl(imageUrl);
       success('Profile photo updated successfully!');
     } catch (err) {
       console.error('Error uploading photo:', err);
@@ -155,15 +154,15 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
     setUploadingBanner(true);
     try {
-      const result = await uploadToCloudinary(file, (progress, speed) => {
+      const imageUrl = await uploadToImgBB(file, (progress, speed) => {
         setBannerProgress({ progress, speed });
       });
 
       await updateDoc(doc(db, 'users', currentUser.uid), {
-        bannerUrl: result.url,
+        bannerUrl: imageUrl,
       });
 
-      setBannerUrl(result.url);
+      setBannerUrl(imageUrl);
       success('Banner updated successfully!');
     } catch (err) {
       console.error('Error uploading banner:', err);

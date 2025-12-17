@@ -4,7 +4,7 @@ android {
     namespace = "com.hasan.lumo"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.hasan.lumo"
+        applicationId "com.hasan.lumo.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

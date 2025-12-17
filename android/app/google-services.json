@@ -17,6 +17,40 @@
       "api_key": [
         {
           "current_key": "AIzaSyC_D9shlYZdsX9RfeDcdLDYwY2N2wP_keE"
+        },
+        {
+          "current_key": "AIzaSyDjr8xomzDCKyhtAVtR_yVxaq0JXP3yYOM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:267697346186:android:8d2d074fdc060c06d37f73",
+        "android_client_info": {
+          "package_name": "com.hasan.lumo.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "267697346186-qapjplto8floshj6j427tp9noov4uu4c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hasan.lumo.mobile",
+            "certificate_hash": "2064d1b660a44d506198a22c1f5453e39ea9bb7a"
+          }
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_D9shlYZdsX9RfeDcdLDYwY2N2wP_keE"
+        },
+        {
+          "current_key": "AIzaSyDjr8xomzDCKyhtAVtR_yVxaq0JXP3yYOM"
         }
       ],
       "services": {

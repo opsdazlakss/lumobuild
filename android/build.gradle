@@ -1,29 +1,67 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    id 'com.android.application'
+    id 'com.google.gms.google-services' // En sonda olmalı
+}
 
-buildscript {
+android {
+    namespace 'com.hasan.lumo'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.hasan.lumo"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        
+        multiDexEnabled true
+        
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
     
-    repositories {
-        google()
-        mavenCentral()
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.13.0'
-        classpath 'com.google.gms:google-services:4.4.4'
-
-        // NOTE: Do not place your application dependencies here; they belong
-        // in the individual module build.gradle files
+    
+    buildFeatures {
+        viewBinding true
     }
 }
 
-apply from: "variables.gradle"
-
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
+dependencies {
+    // AndroidX Core
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    // Firebase BoM (tüm Firebase kütüphanelerinin uyumlu versiyonlarını yönetir)
+    implementation platform('com.google.firebase:firebase-bom:32.7.2')
+    
+    // Firebase Messaging (FCM için)
+    implementation 'com.google.firebase:firebase-messaging'
+    
+    // Firebase Analytics
+    implementation 'com.google.firebase:firebase-analytics'
+    
+    // Firebase Installations (FIS_AUTH_ERROR için önemli)
+    implementation 'com.google.firebase:firebase-installations'
+    
+    // Firebase Core
+    implementation 'com.google.firebase:firebase-core'
+    
+    // Test dependencies
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
-}
+// Google Services plugin (en sonda olmalı)
+apply plugin: 'com.google.gms.google-services'

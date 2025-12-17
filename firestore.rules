@@ -81,13 +81,6 @@ service cloud.firestore {
         match /typing/{userId} {
           allow read, write: if request.auth != null;
         }
-
-        // Voice Channel Connected Users (WebRTC Signaling Presence)
-        match /connectedUsers/{userId} {
-          allow read: if request.auth != null;
-          allow create, update: if request.auth != null && request.auth.uid == userId;
-          allow delete: if request.auth != null && request.auth.uid == userId;
-        }
       }
 
       // Server Roles

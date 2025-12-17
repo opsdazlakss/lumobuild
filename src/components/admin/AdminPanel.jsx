@@ -29,7 +29,6 @@ export const AdminPanel = ({ isOpen, onClose }) => {
   const [editingUser, setEditingUser] = useState(null);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
-  const [newChannelType, setNewChannelType] = useState('text');
   const [editingChannel, setEditingChannel] = useState(null);
   const [customRoles, setCustomRoles] = useState([]);
   const [editingRole, setEditingRole] = useState(null);
@@ -184,14 +183,13 @@ export const AdminPanel = ({ isOpen, onClose }) => {
     try {
       await addDoc(collection(db, 'servers', currentServer, 'channels'), {
         name: newChannelName.trim(),
-        type: newChannelType,
+        type: 'text',
         description: newChannelDesc.trim(),
         position: channels.length,
         createdAt: serverTimestamp(),
       });
       setNewChannelName('');
       setNewChannelDesc('');
-      setNewChannelType('text');
     } catch (error) {
       console.error('Error creating channel:', error);
     }
@@ -584,22 +582,11 @@ export const AdminPanel = ({ isOpen, onClose }) => {
               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Create New Channel</h3>
               <div className="flex gap-3">
                 <div className="flex-1 space-y-2">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Channel name"
-                      value={newChannelName}
-                      onChange={(e) => setNewChannelName(e.target.value)}
-                      className="flex-1"
-                    />
-                    <select
-                      value={newChannelType} // 'text' or 'voice'
-                      onChange={(e) => setNewChannelType(e.target.value)}
-                      className="bg-dark-input text-dark-text border border-dark-hover rounded-lg px-3 outline-none focus:border-brand-primary"
-                    >
-                      <option value="text">Text Channel</option>
-                      <option value="voice">Voice Channel</option>
-                    </select>
-                  </div>
+                  <Input
+                    placeholder="Channel name (#general)"
+                    value={newChannelName}
+                    onChange={(e) => setNewChannelName(e.target.value)}
+                  />
                   <Input
                     placeholder="Channel topic/description (Optional)"
                     value={newChannelDesc}

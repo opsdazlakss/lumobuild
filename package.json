@@ -56,9 +56,6 @@
     "directories": {
       "output": "dist"
     },
-    "extraResources": [
-      ".env"
-    ],
     "win": {
       "target": "nsis",
       "icon": "public/lumo-logo.png",

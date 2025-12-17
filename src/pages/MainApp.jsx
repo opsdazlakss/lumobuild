@@ -241,6 +241,7 @@ export const MainApp = () => {
   }
 
   return (
+    <CallProvider>
       <div 
         className="flex h-screen bg-dark-bg overflow-hidden"
         {...swipeHandlers}
@@ -584,5 +585,6 @@ export const MainApp = () => {
           </div>
         )}
       </div>
+    </CallProvider>
   );
 };

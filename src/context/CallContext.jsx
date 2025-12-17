@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import Peer from 'peerjs';
 import { db } from '../services/firebase';
-import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, deleteDoc, doc, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { playIncomingRing, playOutgoingRing, stopRing } from '../utils/callSounds';
@@ -36,7 +36,130 @@ export const CallProvider = ({ children }) => {
   const [remoteStream, setRemoteStream] = useState(null);
   const [dataConnection, setDataConnection] = useState(null); // P2P Data Channel for Soundboard
   
-  // Custom Sounds State
+  // Voice Room State
+  const [activeRoom, setActiveRoom] = useState(null); // { channelId, serverId }
+  const activeRoomRef = useRef(null);
+  const [roomPeers, setRoomPeers] = useState({}); // { [peerId]: { call, stream, userId } }
+  const roomPeersRef = useRef({}); // Ref for async access
+  
+  // Voice Activity Detection
+  const [talkingPeers, setTalkingPeers] = useState({}); // { [peerId]: boolean } ("me" for local)
+  const audioCtxRef = useRef(null);
+  const analysersRef = useRef({}); // { [peerId]: AnalyserNode }
+  const analyzeIntervalRef = useRef(null);
+  
+  // Volume Control State
+  const [peerVolumes, setPeerVolumes] = useState(() => {
+    try {
+        const saved = localStorage.getItem('dss_user_volumes');
+        return saved ? JSON.parse(saved) : {};
+    } catch(e) { return {}; }
+  }); 
+  const [inputVolume, setInputVolume] = useState(1); 
+  const inputGainNodeRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('dss_user_volumes', JSON.stringify(peerVolumes));
+  }, [peerVolumes]);
+
+  const setPeerVolume = (peerId, volume) => {
+      setPeerVolumes(prev => ({ ...prev, [peerId]: volume }));
+  };
+
+  // Initialize/Cleanup Audio Analysis
+  useEffect(() => {
+    if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    const checkAudioLevels = () => {
+        // If in LiveKit Room (activeRoom), let LiveKit handle VAD via ActiveSpeakersChanged event.
+        // Disable legacy P2P VAD to prevent overwriting state.
+        if (activeRoom) return;
+
+        const threshold = 0.05; // Sensitivity
+        const newTalking = { ...talkingPeers };
+        let changed = false;
+
+        // Helper to check volume
+        const getVolume = (analyser) => {
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            return sum / dataArray.length / 255; // Normalized 0-1
+        };
+
+        // 1. Check Local Stream
+        if (analysersRef.current['me']) {
+            const vol = getVolume(analysersRef.current['me']);
+            const isTalking = vol > threshold;
+            if (newTalking['me'] !== isTalking) {
+                newTalking['me'] = isTalking;
+                changed = true;
+            }
+        }
+
+        // 2. Check Remote Streams
+        Object.keys(analysersRef.current).forEach(peerId => {
+            if (peerId === 'me') return;
+            const vol = getVolume(analysersRef.current[peerId]);
+            const isTalking = vol > threshold;
+            if (newTalking[peerId] !== isTalking) {
+                newTalking[peerId] = isTalking;
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            setTalkingPeers(newTalking);
+        }
+    };
+
+    analyzeIntervalRef.current = setInterval(checkAudioLevels, 100);
+
+    return () => {
+        if (analyzeIntervalRef.current) clearInterval(analyzeIntervalRef.current);
+    };
+  }, []);
+
+  // Update Analysers when streams change
+  useEffect(() => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+
+    // Local Stream Analyser
+    if (localStream && localStream.getAudioTracks().length > 0 && !analysersRef.current['me']) {
+        const source = ctx.createMediaStreamSource(localStream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+        analysersRef.current['me'] = analyser;
+    } else if (!localStream && analysersRef.current['me']) {
+        delete analysersRef.current['me'];
+    }
+
+    // Remote Streams Analysers
+    Object.entries(roomPeers).forEach(([peerId, data]) => {
+        if (data.stream && data.stream.getAudioTracks().length > 0 && !analysersRef.current[peerId]) {
+             const source = ctx.createMediaStreamSource(data.stream);
+             const analyser = ctx.createAnalyser();
+             analyser.fftSize = 64;
+             source.connect(analyser);
+             analysersRef.current[peerId] = analyser;
+        }
+    });
+    
+    // Cleanup old peers
+    Object.keys(analysersRef.current).forEach(peerId => {
+        if (peerId !== 'me' && !roomPeers[peerId]) {
+            delete analysersRef.current[peerId];
+        }
+    });
+
+  }, [localStream, roomPeers]);
   const [customSounds, setCustomSounds] = useState(() => {
     try {
         const saved = localStorage.getItem('dss_custom_sounds');
@@ -80,6 +203,7 @@ export const CallProvider = ({ children }) => {
   };
 
   const [isMuted, setIsMuted] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   
   // Device selection state
@@ -113,6 +237,11 @@ export const CallProvider = ({ children }) => {
         console.warn("Cannot send sound effect. Data connection missing or closed.");
     }
   };
+  
+  // Sync activeRoomRef for cleanup
+  useEffect(() => {
+    activeRoomRef.current = activeRoom;
+  }, [activeRoom]);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -127,6 +256,39 @@ export const CallProvider = ({ children }) => {
         audio.currentTime = 0;
     });
     activeSoundsRef.current = [];
+  };
+
+  const handleRoomCallSafe = (call) => {
+       call.on('stream', (remoteStream) => {
+          console.log(`Mesh: Received stream from ${call.peer}`);
+          // Don't play duplicate audio here. Use React render.
+          setRoomPeers(prev => ({
+              ...prev,
+              [call.peer]: { call, stream: remoteStream }
+          }));
+      });
+      
+      call.on('close', () => {
+          console.log(`Mesh: Peer ${call.peer} disconnected`);
+          setRoomPeers(prev => {
+              const newPeers = { ...prev };
+              delete newPeers[call.peer]; 
+              return newPeers;
+          });
+      });
+      
+      call.on('error', (e) => console.error("Mesh call error:", e));
+  };
+  
+  const toggleDeafen = () => {
+      setIsDeafened(prev => !prev);
+      // NOTE: We don't need to stop streams, we just mute the audio players locally.
+      // Ideally we also tell Firestore we are deafened.
+      if (currentUser && activeRoom) {
+          const { channelId, serverId } = activeRoom;
+          const userRef = doc(db, 'servers', serverId, 'channels', channelId, 'connectedUsers', currentUser.uid);
+          updateDoc(userRef, { isDeafened: !isDeafened }).catch(console.error);
+      }
   };
 
   const stopRingRef = useRef(null); // Ref to hold the sound stop function
@@ -176,30 +338,49 @@ export const CallProvider = ({ children }) => {
       setPeer(newPeer);
     });
 
-    // IMPORTANT: This is for the "Initiator" of the Firestore signal
-    // (User A called User B. User B accepted and is now "dialing back" via PeerJS)
     newPeer.on('call', (call) => {
       console.log('Receiving PeerJS call connection...');
       
-      // Handle Re-call / Upgrade (e.g. switching from Audio to Screen Share)
-      // If we are already in a call with this peer, we blindly accept the new one and drop the old one safely.
+      // CHECK IF VOICE ROOM CALL (Mesh)
+      if (call.metadata && call.metadata.type === 'room_call') {
+          console.log("Detected incoming ROOM call from:", call.peer);
+          
+          const stream = localStreamRef.current || (cameraStreamRef.current);
+          if (stream) {
+              call.answer(stream);
+          } else {
+              call.answer();
+          }
+          
+          // Delegate to Room Logic
+          // We need to ensure handleRoomCall is accessible or logic is duplicated here slightly safely
+          // Since handleRoomCall is defined via const below, we can't call it if it's not hoisted?
+          // Actually, we can move handleRoomCall definition up or use a ref?
+          // OR, since this is an effect running after mount, handleRoomCall might be defined?
+          // NO, const functions are not hoisted.
+          
+          // Let's implement the logic inline here properly to be safe, or direct call.
+          // Better: Define handleRoomCall via useCallback/useRef or move it up?
+          // Moving it up is cleaner but risky with file size.
+          // We will duplicate the critical registration logic here for safety or use a shared handler ref.
+          
+          handleRoomCallSafe(call);
+          return; 
+      }
+
+      // Handle Re-call / Upgrade (Direct Calls)
       if (activeCallRef.current && activeCallRef.current.peer === call.peer) {
           console.log("Replacing existing call (upgrade/renegotiation detected)");
-          // Remove all close listeners to prevent endCall() from triggering
           if (activeCallRef.current.removeAllListeners) {
               activeCallRef.current.removeAllListeners('close');
           }
           activeCallRef.current.close();
       }
 
-      // CRITICAL FIX: We MUST answer the call and provide our stream
-      // Using ref because direct state might be stale in this closure
-      // If localStream was somehow killed, try to grab it from ref or even cameraStreamRef as backup
       const stream = localStreamRef.current || (cameraStreamRef.current);
-      
       if (stream) {
           console.log('Answering call with local stream');
-          call.answer(stream); // Send our A/V back
+          call.answer(stream); 
       } else {
           console.warn('No local stream found when answering! Answering audio-only or empty.');
           call.answer(); 
@@ -210,13 +391,15 @@ export const CallProvider = ({ children }) => {
         setRemoteStream(remoteStream);
       });
       
-      call.on('close', () => {
-         endCall();
-      });
-
       setActiveCall(call);
-      setCallStatus('connected'); // Ensure status is updated
+      setCallStatus('connected'); 
     });
+
+    // Handle Metadata support for Room Calls vs Direct Calls
+    // Note: PeerJS v1.x doesn't pass metadata in 'call' event easily without a wrapper or data connection.
+    // So we will stick to a simpler strategy:
+    // If we are in 'activeRoom' state, assume incoming calls are for the room UNLESS they match an explicit incomingCall signal.
+    // ... For now, keeping the generic handler above.
     
     newPeer.on('error', (err) => {
         console.error('PeerJS Error:', err);
@@ -361,8 +544,6 @@ export const CallProvider = ({ children }) => {
         noiseSuppression: true,
         autoGainControl: true,
         channelCount: 1,
-        sampleRate: 48000,
-        sampleSize: 16,
         ...(selectedMicId && { deviceId: { exact: selectedMicId } })
       };
       
@@ -704,13 +885,18 @@ export const CallProvider = ({ children }) => {
   
   // Toggles
   const toggleAudio = () => {
-    if (localStream) {
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled;
-            setIsMuted(!audioTrack.enabled);
+    setIsMuted(prev => {
+        const newState = !prev;
+        
+        // Handle Legacy PeerJS Stream if active
+        if (localStream) {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !newState; // Muted = enabled: false
+            }
         }
-    }
+        return newState;
+    });
   };
 
   const toggleVideo = () => {
@@ -798,6 +984,7 @@ export const CallProvider = ({ children }) => {
             console.log("Using Web getDisplayMedia with constraints:", constraints);
             displayStream = await navigator.mediaDevices.getDisplayMedia(constraints);
         }
+
 
         const screenVideoTrack = displayStream.getVideoTracks()[0];
         setIsVideoOff(false); 
@@ -921,7 +1108,6 @@ export const CallProvider = ({ children }) => {
     }
   };
 
-
   const stopScreenShare = async () => {
     if (!screenStreamRef.current) return;
     console.log("Stopping screen share...");
@@ -986,6 +1172,107 @@ export const CallProvider = ({ children }) => {
     }
   };
 
+  // ------------------------------------------------------------------
+  // VOICE ROOM LOGIC (Mesh Topology)
+  // ------------------------------------------------------------------
+
+  // ------------------------------------------------------------------
+  // VOICE ROOM LOGIC (LiveKit Migration)
+  // ------------------------------------------------------------------
+
+  const joinVoiceChannel = async (channelId, serverId) => {
+    if (!currentUser) return;
+    
+    // 1. Leave current room if any
+    if (activeRoom) {
+       await leaveVoiceChannel();
+    }
+
+    console.log(`Joining voice channel (LiveKit): ${channelId}`);
+    setActiveRoom({ channelId, serverId });
+
+    // 2. Add Self to Firestore `connectedUsers` for UI presence
+    // We still use Firestore to show "Who is in the channel" in the sidebar list.
+    const userRef = doc(db, 'servers', serverId, 'channels', channelId, 'connectedUsers', currentUser.uid);
+    await updateDoc(userRef, {
+        displayName: userProfile?.displayName || currentUser.email,
+        photoUrl: userProfile?.photoUrl || '',
+        joinedAt: serverTimestamp(),
+        isMuted: isMuted,
+        isDeafened: false
+    }).catch(async (err) => {
+        if (err.code === 'not-found') {
+             await setDoc(userRef, {
+                displayName: userProfile?.displayName || currentUser.uid,
+                photoUrl: userProfile?.photoUrl || '',
+                joinedAt: serverTimestamp(),
+                lastSeen: serverTimestamp(), // Init heartbeat
+                isMuted: isMuted,
+                isDeafened: false
+            }, { merge: true });
+        } else {
+            console.error("Error joining voice channel presence:", err);
+        }
+    });
+  };
+
+  // Heartbeat Mechanism
+  useEffect(() => {
+      if (!activeRoom || !currentUser) return;
+      const { channelId, serverId } = activeRoom;
+      const userRef = doc(db, 'servers', serverId, 'channels', channelId, 'connectedUsers', currentUser.uid);
+
+      const interval = setInterval(() => {
+          updateDoc(userRef, { lastSeen: serverTimestamp() })
+            .catch(e => {
+                if (e.code === 'not-found') {
+                    // Re-join if doc disappeared
+                    joinVoiceChannel(channelId, serverId);
+                } else {
+                    console.error("Heartbeat failed:", e);
+                }
+            });
+      }, 10000); // 10 seconds frequency for faster updates
+
+      return () => clearInterval(interval);
+  }, [activeRoom, currentUser]);
+
+  const leaveVoiceChannel = async () => {
+      if (!activeRoom) return;
+      const { channelId, serverId } = activeRoom;
+      
+      // LiveKit component will unmount and handle disconnection automatically
+      // We just need to clear Presence and State.
+
+      if (currentUser) {
+          try {
+             await deleteDoc(doc(db, 'servers', serverId, 'channels', channelId, 'connectedUsers', currentUser.uid));
+          } catch(e) { console.error("Error removing from channel:", e); }
+      }
+      
+      setActiveRoom(null);
+  };
+
+
+
+  // Handle Window Close / Refresh Cleanup
+  useEffect(() => {
+      const handleBeforeUnload = async (e) => {
+          if (activeRoomRef.current && currentUser) {
+             // Attempt to remove user from channel synchronously if possible, or trigger async
+             // Firestore SDK might not complete in time, but we try.
+             // Ideally we use a cloud function or presence system for 100% reliability,
+             // but this catches most cases.
+             const { channelId, serverId } = activeRoomRef.current;
+             // We can't await here reliably, but we fire the promise.
+             deleteDoc(doc(db, 'servers', serverId, 'channels', channelId, 'connectedUsers', currentUser.uid));
+          }
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentUser]);
+
   const value = {
     startCall,
     answerCall,
@@ -1002,7 +1289,6 @@ export const CallProvider = ({ children }) => {
     activeCall,
     isScreenSharing: !!screenStreamRef.current,
     toggleScreenShare,
-    // Device selection
     availableDevices,
     selectedMicId,
     selectedCameraId,
@@ -1011,9 +1297,39 @@ export const CallProvider = ({ children }) => {
     playSound,
     customSounds,
     addSound,
-    removeSound
+    removeSound,
+    // Voice Room Exports
+    joinVoiceChannel,
+    leaveVoiceChannel,
+    activeRoom,
+    roomPeers,
+    isDeafened,
+    toggleDeafen,
+    talkingPeers,
+    peerVolumes,
+    setPeerVolume,
   };
 
-  return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
+  return (
+    <CallContext.Provider value={value}>
+        {children}
+        {/* Room Audio Elements */}
+        {/* Only render/play if NOT deafened */}
+        {!isDeafened && Object.entries(roomPeers).map(([peerId, data]) => (
+          <audio 
+             key={peerId} 
+             ref={el => { 
+                 if(el) {
+                     el.srcObject = data.stream;
+                     el.volume = peerVolumes[peerId] ?? 1; // Default to 100%
+                 } 
+             }} 
+             autoPlay 
+             playsInline 
+             controls={false}
+          />
+        ))}
+    </CallContext.Provider>
+  );
 };
 

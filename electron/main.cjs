@@ -3,6 +3,16 @@ const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 
+// Setup environment variables properly for Dev vs Prod
+const isDev = !app.isPackaged;
+if (isDev) {
+  require('dotenv').config(); 
+} else {
+  // In production, .env should be in the resources folder (extraResources)
+  require('dotenv').config({ path: path.join(process.resourcesPath, '.env') });
+}
+const { AccessToken } = require('livekit-server-sdk');
+
 // Global state
 let splashWindow = null;
 let mainWindow = null;
@@ -22,6 +32,40 @@ ipcMain.handle('GET_SOURCES', async (event, opts) => {
     console.error('Error getting sources:', error);
     return [];
   }
+});
+
+// IPC Handler for LiveKit Token Generation (Serverless)
+ipcMain.handle('GET_LIVEKIT_TOKEN', async (event, { roomName, participantName }) => {
+    try {
+        const apiKey = process.env.LIVEKIT_API_KEY;
+        const apiSecret = process.env.LIVEKIT_API_SECRET;
+        const wsUrl = process.env.LIVEKIT_URL;
+
+        if (!apiKey || !apiSecret || !wsUrl) {
+            throw new Error("LiveKit credentials missing in main process environment");
+        }
+
+        const at = new AccessToken(apiKey, apiSecret, {
+            identity: participantName,
+            name: participantName, // Optional: Display Name
+            ttl: '1h', // Token valid for 1 hour
+        });
+
+        // Grant permissions
+        at.addGrant({ 
+            roomJoin: true, 
+            room: roomName, 
+            canPublish: true, 
+            canSubscribe: true 
+        });
+
+        const token = await at.toJwt();
+        return { token, wsUrl };
+
+    } catch (error) {
+        console.error("LiveKit Token Gen Error:", error);
+        return { error: error.message };
+    }
 });
 
 
@@ -87,10 +131,9 @@ function createMainWindow() {
     show: false, // Don't show until ready
     icon: path.join(__dirname, '../public/lumo-logo.png'),
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      sandbox: false, // Ensure Node integration works reliably
-      enableRemoteModule: true,
+      nodeIntegration: false, // Secure default
+      contextIsolation: true, // Secure default, requires contextBridge in preload
+      sandbox: false, 
       preload: path.join(__dirname, 'preload.cjs')
     },
     backgroundColor: '#2c2b31',

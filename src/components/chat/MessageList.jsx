@@ -7,7 +7,7 @@ import { useToast } from '../../context/ToastContext';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { LinkConfirmDialog } from '../shared/LinkConfirmDialog';
 import { UserProfileCard } from '../shared/UserProfileCard';
-import { MdDelete, MdEdit, MdCheck, MdClose, MdMoreVert, MdReply, MdAddReaction, MdPushPin } from 'react-icons/md';
+import { MdDelete, MdEdit, MdCheck, MdClose, MdMoreVert, MdReply, MdAddReaction, MdPushPin, MdMic } from 'react-icons/md';
 import { playNotificationSound, isMentioned } from '../../utils/notificationSound';
 import { MarkdownText } from '../../utils/markdown.jsx';
 import { ReactionPicker } from './ReactionPicker';
@@ -567,8 +567,25 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                       </div>
                     )}
                     
+                    {/* Audio Message Display */}
+                    {message.type === 'audio' && (
+                        <div className="mt-1 mb-1 max-w-[300px] w-full bg-dark-hover/50 rounded-lg p-2 border border-dark-hover flex items-center gap-3">
+                             <div className="w-10 h-10 rounded-full bg-brand-primary/20 flex items-center justify-center text-brand-primary flex-shrink-0">
+                                 <MdMic size={20} />
+                             </div>
+                             <div className="flex-1 min-w-0">
+                                 <audio 
+                                    controls 
+                                    src={message.text} 
+                                    className="w-full h-8"
+                                    controlsList="nodownload noplaybackrate" // Optional cleanup
+                                 />
+                             </div>
+                        </div>
+                    )}
+
                     {/* Hide text if it is just a rich media URL (YouTube, Spotify, Twitter, Image) to prevent duplication with preview. Keep text for generic links or mixed content. */}
-                    {message.type !== 'sticker' && (() => {
+                    {message.type !== 'sticker' && message.type !== 'audio' && (() => {
                       const urls = extractUrls(message.text);
                       let displayText = message.text;
                       
@@ -616,7 +633,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                     )}
 
                     {/* Link Previews (YouTube, Spotify, Twitter, etc.) */}
-                    {message.type !== 'sticker' && <MessageLinkPreviews text={message.text} />}
+                    {message.type !== 'sticker' && message.type !== 'audio' && <MessageLinkPreviews text={message.text} />}
                     
                     {/* Poll Display */}
                     {message.type === 'poll' && (

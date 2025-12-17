@@ -9,15 +9,25 @@ import { InviteCodeModal } from '../server/InviteCodeModal';
 import { PresenceSelector } from '../shared/PresenceSelector';
 import { StatusIndicator } from '../shared/StatusIndicator';
 import { DMList } from '../dm/DMList';
+import { VoiceChannel } from '../server/VoiceChannel';
+import { useCall } from '../../context/CallContext';
+import { MdSignalCellularAlt, MdCallEnd, MdMic, MdMicOff, MdHeadset, MdHeadsetOff, MdOpenInFull } from 'react-icons/md';
 
 export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId, dms, selectedDm, onSelectDm }) => {
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  
+  const { joinVoiceChannel, leaveVoiceChannel, activeRoom, isMuted, toggleAudio, isDeafened, toggleDeafen } = useCall();
 
   const handleLogout = () => {
     setShowLogoutConfirm(false);
     onLogout();
+  };
+
+  const handleJoinVoice = (channel) => {
+    if (activeRoom?.channelId === channel.id) return; // Already in
+    joinVoiceChannel(channel.id, serverId);
   };
 
   return (
@@ -59,34 +69,127 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
              onSelectDm={onSelectDm} 
            />
         ) : (
-          <div className="px-2">
-            <div className="text-xs font-semibold text-dark-muted uppercase px-2 mb-1">
-              Text Channels
+          <div className="px-2 space-y-4">
+            {/* Voice Channels Section */}
+            {channels.some(c => c.type === 'voice') && (
+               <div>
+                  <div className="text-xs font-semibold text-dark-muted uppercase px-2 mb-1 flex items-center justify-between group">
+                    Voice Channels
+                  </div>
+                  {channels.filter(c => c.type === 'voice').map((channel) => (
+                    <VoiceChannel 
+                      key={channel.id}
+                      channel={channel}
+                      serverId={serverId}
+                      currentUserId={userProfile?.id || userId}
+                      onJoin={handleJoinVoice} 
+                      isConnected={activeRoom?.channelId === channel.id}
+                    />
+                  ))}
+               </div>
+            )}
+
+            {/* Text Channels Section */}
+            <div>
+              <div className="text-xs font-semibold text-dark-muted uppercase px-2 mb-1">
+                Text Channels
+              </div>
+              {channels.filter(c => !c.type || c.type === 'text').map((channel) => (
+                <button
+                  key={channel.id}
+                  onClick={() => onSelectChannel(channel)}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-2 py-1.5 rounded',
+                    'text-dark-muted hover:bg-dark-hover hover:text-dark-text',
+                    'transition-colors duration-150',
+                    selectedChannel?.id === channel.id && 'bg-dark-hover text-dark-text'
+                  )}
+                >
+                  <FaHashtag className="flex-shrink-0" />
+                  <span className="truncate text-sm flex-1 text-left">{channel.name}</span>
+                  {channel.locked && (
+                    <MdLock className="flex-shrink-0 text-yellow-500" size={14} title="Locked channel" />
+                  )}
+                </button>
+              ))}
             </div>
-            {channels.map((channel) => (
-              <button
-                key={channel.id}
-                onClick={() => onSelectChannel(channel)}
-                className={cn(
-                  'w-full flex items-center gap-2 px-2 py-1.5 rounded',
-                  'text-dark-muted hover:bg-dark-hover hover:text-dark-text',
-                  'transition-colors duration-150',
-                  selectedChannel?.id === channel.id && 'bg-dark-hover text-dark-text'
-                )}
-              >
-                <FaHashtag className="flex-shrink-0" />
-                <span className="truncate text-sm flex-1 text-left">{channel.name}</span>
-                {channel.locked && (
-                  <MdLock className="flex-shrink-0 text-yellow-500" size={14} title="Locked channel" />
-                )}
-              </button>
-            ))}
           </div>
         )}
+
       </div>
 
+       {/* Voice Connection Panel */}
+       {/* Voice Connection Panel */}
+       {activeRoom && (
+        <div className="bg-[#1e1f22] px-2 py-2 border-t border-[#2b2d31] flex flex-col gap-1">
+           {/* Connection Status & Channel Info */}
+           <div className="flex items-center justify-between mb-1 pl-1">
+             <div className="min-w-0 flex flex-col w-full">
+                <span className="text-green-500 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
+                    <MdSignalCellularAlt size={12}/> Voice Connected
+                </span>
+                <span 
+                    className="text-gray-200 text-xs font-semibold truncate cursor-pointer hover:underline hover:text-white transition-colors"
+                    onClick={() => window.dispatchEvent(new CustomEvent('OPEN_VOICE_ROOM'))}
+                >
+                    {channels.find(c => c.id === activeRoom.channelId)?.name || 'General'}
+                </span>
+             </div>
+           </div>
+           
+           {/* Controls Row - Now with 5 buttons including Maximize */}
+           <div className="flex items-center gap-1">
+              <button 
+                 onClick={() => window.dispatchEvent(new CustomEvent('OPEN_VOICE_ROOM'))}
+                 className="flex-1 flex items-center justify-center p-1.5 rounded-[4px] hover:bg-gray-700/50 text-green-400 hover:text-green-300 transition-all"
+                 title="Open Voice View"
+              >
+                  <MdOpenInFull size={18} />
+              </button>
+
+              <button 
+                 onClick={toggleAudio} 
+                 className={cn(
+                   "flex-1 flex items-center justify-center p-1.5 rounded-[4px] transition-all",
+                   isMuted ? "bg-red-500 text-white" : "hover:bg-gray-700/50 text-gray-200"
+                 )}
+                 title={isMuted ? "Unmute" : "Mute"}
+              >
+                 {isMuted ? <MdMicOff size={18} /> : <MdMic size={18} />}
+              </button>
+              
+              <button 
+                 onClick={toggleDeafen} 
+                 className={cn(
+                   "flex-1 flex items-center justify-center p-1.5 rounded-[4px] transition-all",
+                   isDeafened ? "bg-red-500 text-white" : "hover:bg-gray-700/50 text-gray-200"
+                 )}
+                 title={isDeafened ? "Undeafen" : "Deafen"}
+              >
+                 {isDeafened ? <MdHeadsetOff size={18} /> : <MdHeadset size={18} />}
+              </button>
+              
+              <button 
+                 onClick={onOpenSettings} 
+                 className="flex-1 flex items-center justify-center p-1.5 rounded-[4px] hover:bg-gray-700/50 text-gray-200 transition-all"
+                 title="Voice Settings"
+              >
+                 <MdSettings size={18} />
+              </button>
+
+              <button 
+                 onClick={leaveVoiceChannel}
+                 className="flex-1 flex items-center justify-center p-1.5 rounded-[4px] hover:bg-red-500/20 text-gray-400 hover:text-red-500 transition-all"
+                 title="Disconnect"
+              >
+                  <MdCallEnd size={18} />
+              </button>
+           </div>
+        </div>
+       )}
+
       {/* User Panel */}
-      <div className="h-20 bg-dark-bg px-2 flex items-center justify-between gap-2 border-t border-dark-hover -ml-[72px] w-[calc(100%+72px)] relative z-10">
+      <div className="h-20 bg-dark-bg px-2 flex items-center justify-between gap-2 border-t border-dark-hover relative z-10 w-full">
         <div 
           className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-dark-hover rounded p-2 transition-colors"
           onClick={() => setShowProfileCard(true)}

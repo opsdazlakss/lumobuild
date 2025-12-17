@@ -1,7 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-  "version": "1.6.4",
+  "version": "1.6.5",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -22,12 +22,17 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@giphy/js-fetch-api": "^5.7.0",
     "@giphy/react-components": "^10.1.0",
+    "@livekit/components-react": "^2.9.17",
+    "@livekit/components-styles": "^1.2.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
     "emoji-picker-react": "^4.16.1",
     "firebase": "^12.6.0",
+    "livekit-client": "^2.16.1",
+    "livekit-server-sdk": "^2.15.0",
     "peerjs": "^1.5.5",
     "react": "^19.2.3",
     "react-color": "^2.19.3",
@@ -51,6 +56,9 @@
     "directories": {
       "output": "dist"
     },
+    "extraResources": [
+      ".env"
+    ],
     "win": {
       "target": "nsis",
       "icon": "public/lumo-logo.png",

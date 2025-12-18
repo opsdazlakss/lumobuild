@@ -1,7 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-  "version": "1.8.9",
+  "version": "1.9.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -86,6 +86,7 @@
     "url": "https://github.com/opsdazlakss/lumobuild.git"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

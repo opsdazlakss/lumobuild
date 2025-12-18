@@ -94,6 +94,7 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
           <div className="relative flex-shrink-0">
             {userProfile?.photoUrl ? (
               <img 
+                key={userProfile.photoUrl}
                 src={userProfile.photoUrl} 
                 alt={userProfile.displayName}
                 className="w-12 h-12 rounded-full object-cover"
@@ -104,6 +105,7 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
               />
             ) : null}
             <div 
+              key={`fallback-${userProfile?.photoUrl}`}
               className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-lg"
               style={{ display: userProfile?.photoUrl ? 'none' : 'flex' }}
             >

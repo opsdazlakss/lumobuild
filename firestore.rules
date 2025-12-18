@@ -26,14 +26,11 @@ service cloud.firestore {
       return resource.data.type == 'poll' 
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['poll']);
     }
-    function onlyUpdatingFcmTokens() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens']);
-    }
     // Users
     match /users/{userId} {
       allow read: if true;
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin() || onlyUpdatingUnreadMentions() || onlyUpdatingFcmTokens());
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin() || onlyUpdatingUnreadMentions());
       allow delete: if isAdmin();
 
       // Incoming Calls (EKLENDİ)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './context/ToastContext';
@@ -6,8 +6,6 @@ import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { MainApp } from './pages/MainApp';
-import NotificationService from './services/NotificationService';
-import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 function AuthRouter() {
   const { currentUser, userProfile, loading } = useAuth();
@@ -68,35 +66,18 @@ function AuthRouter() {
   );
 }
 
+import { useEffect } from 'react';
 
 function App() {
-  // AuthContext is provided below, so we cannot use it here.
-  // NotificationWrapper inside AuthProvider will handle the logic.
   return (
     <ToastProvider>
       <ErrorBoundary>
         <AuthProvider>
-          <NotificationWrapper>
-             <AuthRouter />
-          </NotificationWrapper>
+           <AuthRouter />
         </AuthProvider>
       </ErrorBoundary>
     </ToastProvider>
   );
 }
-
-// Inner component to use existing AuthContext
-const NotificationWrapper = ({ children }) => {
-  const { currentUser } = useAuth();
-
-  useEffect(() => {
-    // Initialize notifications when the app mounts
-    // We pass currentUser?.uid so it can save the token if logged in.
-    // If not logged in, it might just register without saving to a user doc yet.
-    NotificationService.initialize(currentUser?.uid);
-  }, [currentUser]);
-
-  return children;
-};
 
 export default App;

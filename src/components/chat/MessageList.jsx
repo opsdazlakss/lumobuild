@@ -568,15 +568,13 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                     )}
                     
                     {/* Hide text if it is just a rich media URL (YouTube, Spotify, Twitter, Image) to prevent duplication with preview. Keep text for generic links or mixed content. */}
-                    {(() => {
+                    {message.type !== 'sticker' && (() => {
                       const urls = extractUrls(message.text);
                       let displayText = message.text;
                       
                       // Identify rich media URLs that are shown in previews
                       const richUrls = urls.filter(url => {
                         const type = detectLinkType(url);
-                        // Hide text if it triggers ANY specialized preview card (video, audio, image, file, youtube, etc)
-                        // Keep text only if it's 'generic' (standard link card) or 'twitter' (optional, but twitter embed sometimes fails so text is safeguard? actually twitter has embed)
                         return ['youtube', 'spotify', 'twitter', 'image', 'video', 'audio', 'file'].includes(type);
                       });
 
@@ -588,7 +586,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                       displayText = displayText.trim();
                       
                       return displayText.length > 0 && (
-                        <div className="text-dark-text whitespace-pre-wrap break-words">
+                        <div className="text-dark-text whitespace-pre-wrap break-words select-text">
                           <MarkdownText
                             onMentionClick={(username) => {
                               const user = users.find(u => 
@@ -605,8 +603,20 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                       );
                     })()}
                     
+                    {/* Sticker Display */}
+                    {message.type === 'sticker' && (
+                       <div className="mt-1 mb-1">
+                          <img 
+                            src={message.text} 
+                            alt="Sticker" 
+                            className="w-40 h-40 object-contain drop-shadow-md hover:scale-110 transition-transform origin-bottom-left select-none cursor-pointer"
+                            onClick={() => window.open(message.text, '_blank')}
+                          />
+                       </div>
+                    )}
+
                     {/* Link Previews (YouTube, Spotify, Twitter, etc.) */}
-                    <MessageLinkPreviews text={message.text} />
+                    {message.type !== 'sticker' && <MessageLinkPreviews text={message.text} />}
                     
                     {/* Poll Display */}
                     {message.type === 'poll' && (

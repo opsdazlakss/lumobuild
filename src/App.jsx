@@ -67,6 +67,7 @@ function AuthRouter() {
 }
 
 import { useEffect } from 'react';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 function App() {
   return (

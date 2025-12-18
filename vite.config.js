@@ -9,7 +9,7 @@ export default defineConfig({
     port: 3000,
     host: true,
   },
-  base: '/',
+  base: './',
   define: {
     'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version)
   }

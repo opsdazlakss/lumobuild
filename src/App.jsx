@@ -9,6 +9,7 @@ import { MainApp } from './pages/MainApp';
 
 function AuthRouter() {
   const { currentUser, userProfile, loading } = useAuth();
+  usePushNotifications();
   const [authView, setAuthView] = useState('login');
 
   if (loading) {
@@ -68,6 +69,7 @@ function AuthRouter() {
 
 import { useEffect } from 'react';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { usePushNotifications } from './hooks/usePushNotifications';
 
 function App() {
   return (

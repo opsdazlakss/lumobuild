@@ -1,7 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-  "version": "1.8.7",
+  "version": "1.8.8",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -19,6 +19,7 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
+    "@capacitor/push-notifications": "^8.0.0",
     "@giphy/js-fetch-api": "^5.7.0",
     "@giphy/react-components": "^10.1.0",
     "clsx": "^2.1.1",
@@ -40,7 +41,7 @@
   "description": "Lumo - Modern Chat Application",
   "author": "Hasan",
   "build": {
-    "appId": "com.hasan.lumo",
+    "appId": "com.hasan.lumoapp",
     "productName": "Lumo",
     "files": [
       "dist/**/*",

@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.hasan.lumo',
+  appId: 'com.hasan.lumoapp',
   appName: 'Lumo',
   webDir: 'dist',
   plugins: {

@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { AdminLogsTab } from './AdminLogsTab';
 import { doc, updateDoc, deleteDoc, addDoc, collection, serverTimestamp, onSnapshot, query, getDocs, where, writeBatch } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, MdSettings, MdCleaningServices, MdDragHandle } from 'react-icons/md';
+import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, MdSettings, MdCleaningServices, MdDragHandle, MdNotifications, MdContentCopy } from 'react-icons/md';
 import { FaHashtag } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
 import { useToast } from '../../context/ToastContext';
@@ -19,6 +19,7 @@ const ADMIN_TABS = [
   { id: 'channels', label: 'Channels', icon: FaHashtag, category: 'Server Settings' },
   { id: 'server', label: 'Overview', icon: MdInfo, category: 'Server Settings' },
   { id: 'logs', label: 'Audit Log', icon: MdHistory, category: 'Server Settings' },
+  { id: 'notifications', label: 'Notifications', icon: MdNotifications, category: 'Maintenance' },
   { id: 'cleanup', label: 'Cleanup', icon: MdCleaningServices, category: 'Maintenance' },
 ];
 
@@ -695,6 +696,58 @@ export const AdminPanel = ({ isOpen, onClose }) => {
             <h1 className="text-2xl font-bold text-dark-text">Audit Log</h1>
             <p className="text-dark-muted">View server activity and moderation history.</p>
             <AdminLogsTab />
+          </div>
+        );
+
+      case 'notifications':
+        return (
+          <div className="space-y-6">
+            <h1 className="text-2xl font-bold text-dark-text">Push Notifications</h1>
+            <p className="text-dark-muted">View and copy user FCM tokens for manual testing.</p>
+            
+            <div className="bg-dark-bg rounded-lg border border-dark-hover overflow-hidden">
+              <div className="px-6 py-4 border-b border-dark-hover">
+                <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide">
+                  Registered Devices — {users.filter(u => u.fcmTokens).length} / {users.length}
+                </h3>
+              </div>
+              
+              <div className="divide-y divide-dark-hover max-h-[600px] overflow-y-auto">
+                {users.map((user) => (
+                  <div key={user.id} className="p-4 flex items-center justify-between hover:bg-dark-sidebar/50 transition-colors">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-10 h-10 rounded-full bg-brand-primary flex items-center justify-center text-white shrink-0">
+                        {user.displayName?.[0]?.toUpperCase() || 'U'}
+                      </div>
+                      <div className="overflow-hidden">
+                        <div className="font-medium text-dark-text truncate">{user.displayName}</div>
+                        <div className="text-xs font-mono text-dark-muted truncate max-w-[400px]">
+                          {user.fcmTokens || 'No token registered'}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {user.fcmTokens ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            navigator.clipboard.writeText(user.fcmTokens);
+                            success('Token copied to clipboard!');
+                          }}
+                        >
+                          <MdContentCopy size={16} className="mr-1" />
+                          Copy
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-dark-muted italic px-2">Offline/No Device</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         );
 

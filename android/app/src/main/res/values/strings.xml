@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Lumo</string>
     <string name="title_activity_main">Lumo</string>
-    <string name="package_name">com.hasan.lumo</string>
-    <string name="custom_url_scheme">com.hasan.lumo</string>
+    <string name="package_name">com.hasan.lumoapp</string>
+    <string name="custom_url_scheme">com.hasan.lumoapp</string>
 </resources>

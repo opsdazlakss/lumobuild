@@ -1,4 +1,4 @@
-package com.hasan.lumo;
+package com.hasan.lumoapp;
 
 import com.getcapacitor.BridgeActivity;
 

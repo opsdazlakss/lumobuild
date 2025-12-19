@@ -23,6 +23,10 @@ export default {
         moderator: '#faa81a',
         member: '#80848e',
       },
+      spacing: {
+        'safe-top': 'var(--safe-area-inset-top)',
+        'safe-bottom': 'var(--safe-area-inset-bottom)',
+      }
     },
   },
   plugins: [],

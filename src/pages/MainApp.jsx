@@ -243,7 +243,7 @@ export const MainApp = () => {
   return (
     <CallProvider>
       <div 
-        className="flex h-screen bg-dark-bg overflow-hidden"
+        className="flex h-screen bg-dark-bg overflow-hidden pt-safe-top"
         {...swipeHandlers}
       >
         {/* Desktop Sidebar (Hidden on Mobile) */}
@@ -286,7 +286,7 @@ export const MainApp = () => {
             />
             
             {/* Drawer Content */}
-            <div className="relative flex h-full animate-slide-in-left">
+            <div className="relative flex h-full animate-slide-in-left pt-safe-top bg-dark-bg">
               <ServerSwitcher
                 servers={servers}
                 currentServerId={currentServer}
@@ -366,7 +366,7 @@ export const MainApp = () => {
           ) : (
             <>
               {/* Channel Header */}
-              <div className="h-12 px-4 flex items-center justify-between border-b border-dark-hover shadow-sm bg-dark-bg">
+              <div className="h-12 md:h-12 pt-safe-top md:pt-0 px-4 flex items-center justify-between border-b border-dark-hover shadow-sm bg-dark-bg box-content">
                 <div className="flex items-center gap-2 overflow-hidden">
                   {/* Mobile Menu Button */}
                   <button

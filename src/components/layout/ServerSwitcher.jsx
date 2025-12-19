@@ -17,7 +17,7 @@ export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCre
   };
 
   return (
-    <div className="w-20 bg-dark-bg h-full flex flex-col items-center">
+    <div className="w-20 bg-dark-bg h-full flex flex-col items-center pt-safe-top md:pt-0 box-content">
       {/* Lumo Logo - Independent Section */}
       <div className="flex flex-col items-center">
         <button 

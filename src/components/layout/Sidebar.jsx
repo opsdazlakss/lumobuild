@@ -23,7 +23,7 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
   return (
     <div className="w-60 bg-dark-sidebar flex flex-col h-full">
       {/* Server Header */}
-      <div className="h-12 px-4 flex items-center justify-between border-b border-dark-hover shadow-md">
+      <div className="h-12 md:h-12 pt-safe-top md:pt-0 px-4 flex items-center justify-between border-b border-dark-hover shadow-md box-content">
         <h2 className="font-semibold text-dark-text truncate">
           {server?.name || 'Lumo'}
         </h2>

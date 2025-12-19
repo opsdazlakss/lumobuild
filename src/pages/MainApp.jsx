@@ -243,7 +243,7 @@ export const MainApp = () => {
   return (
     <CallProvider>
       <div 
-        className="flex h-screen bg-dark-bg overflow-hidden pt-safe-top"
+        className="flex h-screen bg-dark-bg overflow-hidden"
         {...swipeHandlers}
       >
         {/* Desktop Sidebar (Hidden on Mobile) */}
@@ -286,7 +286,7 @@ export const MainApp = () => {
             />
             
             {/* Drawer Content */}
-            <div className="relative flex h-full animate-slide-in-left pt-safe-top bg-dark-bg">
+            <div className="relative flex h-full animate-slide-in-left bg-dark-bg">
               <ServerSwitcher
                 servers={servers}
                 currentServerId={currentServer}
@@ -481,7 +481,7 @@ export const MainApp = () => {
               onClick={() => setShowMobileUserList(false)}
             />
             
-            <div className="relative h-full bg-dark-sidebar shadow-xl w-64 animate-slide-in-right">
+            <div className="relative h-full bg-dark-sidebar shadow-xl w-64 animate-slide-in-right pt-safe-top">
                <div className="flex items-center justify-between p-4 border-b border-dark-hover">
                  <h3 className="font-semibold text-dark-text">Members</h3>
                  <button onClick={() => setShowMobileUserList(false)}>

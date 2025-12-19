@@ -744,7 +744,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col md:flex-row" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 bg-black/80 z-50 flex flex-col md:flex-row pt-safe-top md:pt-0" role="dialog" aria-modal="true">
       {/* Sidebar - Horizontal on Mobile, Vertical on Desktop */}
       <div className="w-full md:w-56 bg-dark-sidebar flex flex-col shrink-0 border-b md:border-b-0 md:border-r border-dark-hover">
         <div className="flex md:flex-col overflow-x-auto md:overflow-y-auto py-2 md:py-4 px-2 gap-2 md:gap-0 no-scrollbar">

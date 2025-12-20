@@ -9,6 +9,8 @@ import { InviteCodeModal } from '../server/InviteCodeModal';
 import { PresenceSelector } from '../shared/PresenceSelector';
 import { StatusIndicator } from '../shared/StatusIndicator';
 import { DMList } from '../dm/DMList';
+import { VoiceChannelSection } from '../../voiceChannel/components/VoiceChannelSection';
+import { VoiceChannelBar } from '../../voiceChannel/components/VoiceChannelBar';
 
 export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId, dms, selectedDm, onSelectDm }) => {
   const [showProfileCard, setShowProfileCard] = useState(false);
@@ -63,7 +65,7 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
             <div className="text-xs font-semibold text-dark-muted uppercase px-2 mb-1">
               Text Channels
             </div>
-            {channels.map((channel) => (
+            {channels.filter(ch => ch.type !== 'voice').map((channel) => (
               <button
                 key={channel.id}
                 onClick={() => onSelectChannel(channel)}
@@ -81,9 +83,15 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
                 )}
               </button>
             ))}
+            
+            {/* Voice Channels */}
+            <VoiceChannelSection />
           </div>
         )}
       </div>
+
+      {/* Voice Channel Bar - Discord style, above user panel */}
+      <VoiceChannelBar />
 
       {/* User Panel */}
       <div className="h-20 bg-dark-bg px-2 flex items-center justify-between gap-2 border-t border-dark-hover -ml-[72px] w-[calc(100%+72px)] relative z-10">

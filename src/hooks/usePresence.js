@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 const HEARTBEAT_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
@@ -17,10 +17,10 @@ export const usePresence = (userId) => {
 
     const updatePresence = async () => {
       try {
-        await updateDoc(doc(db, 'users', userId), {
+        await setDoc(doc(db, 'users', userId), {
           lastSeen: serverTimestamp(),
           isOnline: true // Still set this for backwards compatibility
-        });
+        }, { merge: true });
       } catch (err) {
         console.error('Error updating presence:', err);
       }

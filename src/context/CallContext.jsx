@@ -6,10 +6,7 @@ import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { playIncomingRing, playOutgoingRing, stopRing } from '../utils/callSounds';
 import { hasCapability, CAPABILITIES } from '../utils/permissions';
-
-// Custom Soundboard Limits
-const MAX_SOUNDS = 10;
-const MAX_SOUND_SIZE_KB = 300; // Limit per sound to prevent lag storage issues
+import { useSoundboard } from './SoundboardContext';
 
 const CallContext = createContext();
 
@@ -36,48 +33,7 @@ export const CallProvider = ({ children }) => {
   const [remoteStream, setRemoteStream] = useState(null);
   const [dataConnection, setDataConnection] = useState(null); // P2P Data Channel for Soundboard
   
-  // Custom Sounds State
-  const [customSounds, setCustomSounds] = useState(() => {
-    try {
-        const saved = localStorage.getItem('dss_custom_sounds');
-        return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-        return [];
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('dss_custom_sounds', JSON.stringify(customSounds));
-  }, [customSounds]);
-
-  const addSound = async (name, file) => {
-    if (customSounds.length >= MAX_SOUNDS) {
-        showError(`Maximum ${MAX_SOUNDS} sounds allowed.`);
-        return false;
-    }
-    if (file.size > MAX_SOUND_SIZE_KB * 1024) {
-        showError(`File too large. Max ${MAX_SOUND_SIZE_KB}KB.`);
-        return false;
-    }
-
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const newSound = {
-                id: Date.now().toString(),
-                name: name.trim() || 'Sound',
-                src: e.target.result // Base64
-            };
-            setCustomSounds(prev => [...prev, newSound]);
-            resolve(true);
-        };
-        reader.readAsDataURL(file);
-    });
-  };
-
-  const removeSound = (id) => {
-    setCustomSounds(prev => prev.filter(s => s.id !== id));
-  };
+  const { customSounds, addSound, removeSound } = useSoundboard();
 
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
@@ -315,6 +271,12 @@ export const CallProvider = ({ children }) => {
 
   // 3. Helper: Enumerate available media devices
   const refreshDevices = async () => {
+    // Guard for environments without mediaDevices (e.g., non-HTTPS)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      console.warn('mediaDevices API not available');
+      return { audioInputs: [], videoInputs: [], audioOutputs: [] };
+    }
+    
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput');
@@ -341,6 +303,12 @@ export const CallProvider = ({ children }) => {
 
   // Initial device enumeration
   useEffect(() => {
+    // Guard for environments without mediaDevices
+    if (!navigator.mediaDevices) {
+      console.warn('mediaDevices API not available - skipping device enumeration');
+      return;
+    }
+    
     refreshDevices();
     
     // Listen for device changes (plugging in/out devices)
@@ -350,6 +318,13 @@ export const CallProvider = ({ children }) => {
 
   // 4. Helper: Get Media Stream with enhanced audio quality and selected devices
   const getMediaStream = async (video = true) => {
+    // Guard for environments without mediaDevices (e.g., non-HTTPS)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.error('mediaDevices API not available - requires HTTPS or localhost');
+      showError('Kamera/mikrofon için HTTPS veya localhost gerekli');
+      return null;
+    }
+    
     try {
       // Ensure devices are enumerated
       if (availableDevices.audioInputs.length === 0) {

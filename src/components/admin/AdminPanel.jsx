@@ -30,6 +30,7 @@ export const AdminPanel = ({ isOpen, onClose }) => {
   const [editingUser, setEditingUser] = useState(null);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelDesc, setNewChannelDesc] = useState('');
+  const [newChannelType, setNewChannelType] = useState('text');
   const [editingChannel, setEditingChannel] = useState(null);
   const [customRoles, setCustomRoles] = useState([]);
   const [editingRole, setEditingRole] = useState(null);
@@ -184,15 +185,18 @@ export const AdminPanel = ({ isOpen, onClose }) => {
     try {
       await addDoc(collection(db, 'servers', currentServer, 'channels'), {
         name: newChannelName.trim(),
-        type: 'text',
-        description: newChannelDesc.trim(),
+        type: newChannelType,
+        description: newChannelType === 'text' ? newChannelDesc.trim() : '',
         position: channels.length,
         createdAt: serverTimestamp(),
       });
       setNewChannelName('');
       setNewChannelDesc('');
+      setNewChannelType('text');
+      success(`${newChannelType === 'voice' ? 'Sesli' : 'Yazı'} kanal oluşturuldu!`);
     } catch (error) {
       console.error('Error creating channel:', error);
+      showError('Kanal oluşturulamadı');
     }
   };
 
@@ -583,16 +587,41 @@ export const AdminPanel = ({ isOpen, onClose }) => {
               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Create New Channel</h3>
               <div className="flex gap-3">
                 <div className="flex-1 space-y-2">
+                  {/* Channel Type Selector */}
+                  <div className="flex gap-2 mb-2">
+                    <button
+                      onClick={() => setNewChannelType('text')}
+                      className={`flex-1 py-2 px-4 rounded-lg border transition-colors ${
+                        newChannelType === 'text'
+                          ? 'border-brand-primary bg-brand-primary/20 text-brand-primary'
+                          : 'border-dark-hover text-dark-muted hover:border-dark-muted'
+                      }`}
+                    >
+                      # Yazı Kanalı
+                    </button>
+                    <button
+                      onClick={() => setNewChannelType('voice')}
+                      className={`flex-1 py-2 px-4 rounded-lg border transition-colors ${
+                        newChannelType === 'voice'
+                          ? 'border-green-500 bg-green-500/20 text-green-500'
+                          : 'border-dark-hover text-dark-muted hover:border-dark-muted'
+                      }`}
+                    >
+                      🔊 Sesli Kanal
+                    </button>
+                  </div>
                   <Input
-                    placeholder="Channel name (#general)"
+                    placeholder="Channel name"
                     value={newChannelName}
                     onChange={(e) => setNewChannelName(e.target.value)}
                   />
-                  <Input
-                    placeholder="Channel topic/description (Optional)"
-                    value={newChannelDesc}
-                    onChange={(e) => setNewChannelDesc(e.target.value)}
-                  />
+                  {newChannelType === 'text' && (
+                    <Input
+                      placeholder="Channel topic/description (Optional)"
+                      value={newChannelDesc}
+                      onChange={(e) => setNewChannelDesc(e.target.value)}
+                    />
+                  )}
                 </div>
                 <Button onClick={handleCreateChannel} className="h-fit mt-auto">
                   <MdAdd size={20} />

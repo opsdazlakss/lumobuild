@@ -39,58 +39,42 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubscribeProfile = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      // Clean up previous profile listener if any
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       setCurrentUser(user);
 
       if (user) {
         // Listen to user profile
-        const unsubscribeProfile = onSnapshot(
+        unsubscribeProfile = onSnapshot(
           doc(db, 'users', user.uid),
           (doc) => {
             if (doc.exists()) {
               setUserProfile({ id: doc.id, ...doc.data() });
             }
-          }
+          },
+          (err) => console.error('[AuthContext] Profile listener error:', err)
         );
 
         // Update presence immediately
-        await updatePresence(user.uid);
-
-        // Update presence every 2 minutes while user is active
-        const presenceInterval = setInterval(() => {
-          updatePresence(user.uid);
-        }, 2 * 60 * 1000); // 2 minutes
-
-        // Update presence before page close
-        const handleBeforeUnload = () => {
-          // Use sendBeacon for reliable delivery on page close
-          const userRef = doc(db, 'users', user.uid);
-          navigator.sendBeacon(
-            `https://firestore.googleapis.com/v1/projects/${import.meta.env.VITE_FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${user.uid}`,
-            JSON.stringify({
-              fields: {
-                lastSeen: { timestampValue: new Date().toISOString() }
-              }
-            })
-          );
-        };
-
-        window.addEventListener('beforeunload', handleBeforeUnload);
+        updatePresence(user.uid).catch(() => {});
         
         setLoading(false);
-
-        return () => {
-          unsubscribeProfile();
-          clearInterval(presenceInterval);
-          window.removeEventListener('beforeunload', handleBeforeUnload);
-        };
       } else {
         setUserProfile(null);
         setLoading(false);
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   const register = async (email, password, displayName) => {
@@ -127,7 +111,8 @@ export const AuthProvider = ({ children }) => {
       try {
         await updatePresence(currentUser.uid, false);
       } catch (err) {
-        console.log('Final presence update failed (expected):', err.code);
+        // This fails often on logout because the token is invalidated, which is fine
+        console.log('[AuthContext] Final presence update skipped or failed during logout');
       }
     }
     return signOut(auth);

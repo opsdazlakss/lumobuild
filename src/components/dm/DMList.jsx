@@ -6,7 +6,7 @@ import { db } from '../../services/firebase';
 import { cn, formatTimestamp } from '../../utils/helpers';
 import { MdClose, MdDelete } from 'react-icons/md';
 
-const DMListItem = ({ dm, currentUserId, isSelected, onClick, onContextMenu }) => {
+const DMListItem = ({ dm, currentUserId, isSelected, unreadCount, onClick, onContextMenu }) => {
   const otherUserId = dm.participants.find(id => id !== currentUserId);
   const [otherUser, setOtherUser] = useState(null);
 
@@ -51,6 +51,15 @@ const DMListItem = ({ dm, currentUserId, isSelected, onClick, onContextMenu }) =
           </div>
         )}
         {/* Status indicator could be added here if we had global presence */}
+        
+        {/* Unread Badge */}
+        {unreadCount > 0 && (
+          <div className="absolute -top-1 -right-1 min-w-4 h-4 bg-red-500 rounded-full flex items-center justify-center border-2 border-dark-sidebar pointer-events-none z-10">
+            <span className="text-white text-[9px] font-bold px-0.5">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          </div>
+        )}
       </div>
       
       <div className="flex-1 text-left overflow-hidden">
@@ -70,7 +79,7 @@ const DMListItem = ({ dm, currentUserId, isSelected, onClick, onContextMenu }) =
   );
 };
 
-export const DMList = ({ dms, selectedDmId, onSelectDm }) => {
+export const DMList = ({ dms, unreadDms = {}, selectedDmId, onSelectDm }) => {
   const { currentUser } = useAuth();
   const [contextMenu, setContextMenu] = useState(null);
   const [optimisticallyHidden, setOptimisticallyHidden] = useState([]);
@@ -139,6 +148,7 @@ export const DMList = ({ dms, selectedDmId, onSelectDm }) => {
               dm={dm}
               currentUserId={currentUser.uid}
               isSelected={selectedDmId === dm.id}
+              unreadCount={unreadDms[dm.id]?.count || 0}
               onClick={() => onSelectDm(dm)}
               onContextMenu={(e) => handleContextMenu(e, dm)}
             />

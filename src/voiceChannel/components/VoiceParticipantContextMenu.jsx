@@ -1,8 +1,15 @@
 import { useVoiceChannel } from '../context/VoiceChannelContext';
-import { FaVolumeUp } from 'react-icons/fa';
+import { FaVolumeUp, FaUserSlash } from 'react-icons/fa';
+import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
+import { db } from '../../services/firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
 
-export const VoiceParticipantContextMenu = ({ participant, position, onClose }) => {
+export const VoiceParticipantContextMenu = ({ participant, position, onClose, channelId, serverId }) => {
   const { userVolumes, setUserVolume } = useVoiceChannel();
+  const { userProfile } = useAuth();
+  
+  const isAdmin = userProfile?.role === 'admin';
   
   // Local volume state (0 to 100 for the slider)
   const currentVolume = Math.round((userVolumes.get(participant.odaId) ?? 1.0) * 100);
@@ -10,6 +17,38 @@ export const VoiceParticipantContextMenu = ({ participant, position, onClose }) 
   const handleVolumeChange = (e) => {
     const newVolume = parseInt(e.target.value) / 100;
     setUserVolume(participant.odaId, newVolume);
+  };
+
+  const handleKickFromVoice = async () => {
+    console.log('[Admin] Kick attempt:', {
+      isAdmin,
+      channelId,
+      serverId,
+      participantId: participant.odaId,
+      participantName: participant.displayName
+    });
+
+    if (!isAdmin) {
+      console.error('[Admin] Not an admin, cannot kick');
+      return;
+    }
+
+    if (!channelId || !serverId) {
+      console.error('[Admin] Missing channel or server ID');
+      return;
+    }
+    
+    try {
+      const participantRef = doc(
+        db, 'servers', serverId, 'channels', channelId, 'voiceParticipants', participant.odaId
+      );
+      console.log('[Admin] Deleting participant:', participantRef.path);
+      await deleteDoc(participantRef);
+      console.log('[Admin] Successfully kicked user from voice:', participant.displayName);
+      onClose();
+    } catch (err) {
+      console.error('[Admin] Failed to kick user:', err);
+    }
   };
 
   return (
@@ -51,6 +90,19 @@ export const VoiceParticipantContextMenu = ({ participant, position, onClose }) 
             This setting only affects the audio heard by you.
           </div>
         </div>
+
+        {/* Admin Actions */}
+        {isAdmin && (
+          <div className="mt-3 border-t border-[#1e1f22] pt-3">
+            <button
+              onClick={handleKickFromVoice}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded transition-colors"
+            >
+              <FaUserSlash size={14} />
+              <span>Kick from Voice Channel</span>
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

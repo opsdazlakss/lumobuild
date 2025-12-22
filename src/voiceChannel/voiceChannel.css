@@ -332,6 +332,35 @@
   border: 2px solid var(--brand-primary, #5865f2);
 }
 
+/* Speaking Indicator - Discord-style green border */
+.video-tile.speaking {
+  border: 3px solid #43b581;
+  box-shadow: 0 0 12px rgba(67, 181, 129, 0.5), 
+              inset 0 0 8px rgba(67, 181, 129, 0.1);
+  animation: speaking-pulse 1.5s ease-in-out infinite;
+}
+
+.video-tile.speaking.local {
+  border-color: #43b581; /* Speaking overrides local purple border */
+}
+
+@keyframes speaking-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 8px rgba(67, 181, 129, 0.4), 
+                inset 0 0 6px rgba(67, 181, 129, 0.1);
+  }
+  50% { 
+    box-shadow: 0 0 16px rgba(67, 181, 129, 0.6), 
+                inset 0 0 10px rgba(67, 181, 129, 0.15);
+  }
+}
+
+/* Speaking indicator on participant avatar in sidebar */
+.voice-participant.speaking .participant-avatar {
+  border: 2px solid #43b581;
+  box-shadow: 0 0 8px rgba(67, 181, 129, 0.5);
+}
+
 .video-feed {
   width: 100%;
   height: 100%;

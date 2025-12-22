@@ -3,7 +3,7 @@ import { useCall } from '../../context/CallContext';
 import { useAuth } from '../../context/AuthContext';
 import { ScreenShareModal } from './ScreenShareModal';
 import { DeviceSettingsModal } from './DeviceSettingsModal';
-import { hasCapability, CAPABILITIES } from '../../utils/permissions';
+import { hasCapability, CAPABILITIES, isPremiumUser } from '../../utils/permissions';
 
 import { MdCallEnd, MdMic, MdMicOff, MdVideocam, MdVideocamOff, MdScreenShare, MdStopScreenShare, MdVolumeUp, MdVolumeOff, MdVolumeMute, MdSettings, MdFullscreen, MdFullscreenExit, MdGraphicEq, MdDelete, MdAdd } from 'react-icons/md';
 import { FaPhone } from 'react-icons/fa';
@@ -51,15 +51,10 @@ export const CallModal = () => {
   const [showScreenShareModal, setShowScreenShareModal] = useState(false);
   const [showSoundboard, setShowSoundboard] = useState(false);
   
-  const { userProfile } = useAuth(); // used for capabilities
-  const { role } = useAuth(); // Assuming useAuth exposes role for easier check, or derived from profile
+  const { userProfile } = useAuth();
   
-  // Robust Premium Check: Roles, Plan, OR Badge
-  const isPremium = 
-    userProfile?.roles?.includes('premium') || 
-    userProfile?.roles?.includes('admin') || 
-    userProfile?.plan === 'premium' ||
-    userProfile?.badges?.includes('premium');
+  // Use centralized premium check
+  const isPremium = isPremiumUser(userProfile);
   
   const canScreenShare = hasCapability(userProfile, CAPABILITIES.SCREEN_SHARE);
   

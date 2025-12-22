@@ -94,7 +94,8 @@ service cloud.firestore {
           allow read: if request.auth != null;
           allow create: if request.auth != null;
           allow update: if request.auth != null && request.auth.uid == resource.data.odaId;
-          allow delete: if request.auth != null && request.auth.uid == resource.data.odaId;
+          // Allow user to delete their own participant OR admin to kick anyone
+          allow delete: if request.auth != null && (request.auth.uid == resource.data.odaId || isAdmin());
         }
       }
 

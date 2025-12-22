@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { MdOpenInNew, MdPlayCircle, MdMusicNote, MdDescription, MdDownload } from 'react-icons/md';
 import { FaTwitter, FaSpotify, FaYoutube } from 'react-icons/fa';
+import { MediaViewerModal } from './MediaViewerModal';
 
 // URL Detection Patterns
 const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
@@ -165,20 +166,34 @@ const SpotifyEmbed = ({ url }) => {
 
 // Image Embed Component
 const ImageEmbed = ({ url }) => {
+  const [showViewer, setShowViewer] = useState(false);
+  
   return (
-    <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-dark-hover bg-dark-sidebar">
-      <a href={url} target="_blank" rel="noopener noreferrer" className="block cursor-pointer">
-        <img 
-          src={url} 
-          alt="Attachment"
-          className="w-full h-auto max-h-[400px] object-contain bg-black/50"
-          loading="lazy"
-          onError={(e) => {
-            e.target.style.display = 'none';
-          }}
-        />
-      </a>
-    </div>
+    <>
+      <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-dark-hover bg-dark-sidebar">
+        <div 
+          className="block cursor-pointer hover:opacity-90 transition-opacity"
+          onClick={() => setShowViewer(true)}
+        >
+          <img 
+            src={url} 
+            alt="Attachment"
+            className="w-full h-auto max-h-[400px] object-contain bg-black/50"
+            loading="lazy"
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
+          />
+        </div>
+      </div>
+      
+      <MediaViewerModal
+        isOpen={showViewer}
+        onClose={() => setShowViewer(false)}
+        mediaUrl={url}
+        mediaType="image"
+      />
+    </>
   );
 };
 
@@ -259,14 +274,32 @@ const TwitterEmbed = ({ url }) => {
 
 // Video Embed Component
 const VideoEmbed = ({ url }) => {
+  const [showViewer, setShowViewer] = useState(false);
+  
   return (
-    <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-dark-hover bg-dark-sidebar">
-      <video 
-        src={url} 
-        controls 
-        className="w-full max-h-[400px] bg-black"
+    <>
+      <div className="mt-2 max-w-md rounded-lg overflow-hidden border border-dark-hover bg-dark-sidebar">
+        <div 
+          className="cursor-pointer"
+          onClick={() => setShowViewer(true)}
+        >
+          <video 
+            src={url} 
+            className="w-full max-h-[400px] bg-black pointer-events-none"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/50 transition-colors">
+            <MdPlayCircle className="text-white/90 hover:text-white" size={64} />
+          </div>
+        </div>
+      </div>
+      
+      <MediaViewerModal
+        isOpen={showViewer}
+        onClose={() => setShowViewer(false)}
+        mediaUrl={url}
+        mediaType="video"
       />
-    </div>
+    </>
   );
 };
 

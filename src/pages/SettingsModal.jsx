@@ -11,6 +11,7 @@ import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch, MdPalette } from 'react-icons/md';
 import { PremiumSettings } from '../components/settings/PremiumSettings';
+import { isPremiumUser } from '../utils/permissions';
 
 // Settings categories
 const SETTINGS_TABS = [
@@ -47,7 +48,8 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   });
   const [changingPassword, setChangingPassword] = useState(false);
 
-  const isPremium = userProfile?.role === 'admin' || userProfile?.role === 'premium';
+  // Use centralized premium check
+  const isPremium = isPremiumUser(userProfile);
 
   // Reset form when profile changes
   useEffect(() => {

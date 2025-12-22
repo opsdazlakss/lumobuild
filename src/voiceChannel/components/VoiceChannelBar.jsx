@@ -10,6 +10,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useSoundboard } from '../../context/SoundboardContext';
 import { VoiceChannelGrid } from './VoiceChannelGrid';
 import { ScreenShareModal } from '../../components/call/ScreenShareModal';
+import { isPremiumUser } from '../../utils/permissions';
+import { useToast } from '../../context/ToastContext';
 
 export const VoiceChannelBar = () => {
   const { 
@@ -33,12 +35,10 @@ export const VoiceChannelBar = () => {
   
   const { customSounds, addSound, removeSound } = useSoundboard();
   const { userProfile } = useAuth();
+  const { info } = useToast();
   
-  const isPremium = 
-    userProfile?.roles?.includes('premium') || 
-    userProfile?.roles?.includes('admin') || 
-    userProfile?.plan === 'premium' ||
-    userProfile?.badges?.includes('premium');
+  // Use centralized premium check
+  const isPremium = isPremiumUser(userProfile);
 
   const { channels } = useData();
   const [showGrid, setShowGrid] = useState(false);
@@ -90,6 +90,11 @@ export const VoiceChannelBar = () => {
       // Stop sharing
       toggleScreenShare(null);
     } else {
+      // Premium check for screen share
+      if (!isPremium) {
+        info('Screen sharing is a Premium feature!');
+        return;
+      }
       // Open picker modal
       setShowScreenShareModal(true);
     }
@@ -180,6 +185,7 @@ export const VoiceChannelBar = () => {
                         <div 
                           className="menu-item soundboard-item"
                           onClick={() => {
+                            if (!isPremium) return; // Block non-premium
                             playSound(sound.id);
                             // setShowSoundboard(false); // Optional: keep open for multiple sounds
                           }}

@@ -611,11 +611,17 @@ export const CallProvider = ({ children }) => {
 
   // 6. End Call (Both Sides)
   const endCall = async (deleteSignalDoc = true) => {
+    console.log('[CallContext] Ending call - starting cleanup...');
+    
     // 0. Stop screen share stream if active
     if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach(t => t.stop());
+        screenStreamRef.current.getTracks().forEach(t => {
+          t.stop();
+          console.log('[CallContext] Stopped screen track:', t.kind);
+        });
         screenStreamRef.current = null;
     }
+    // Note: isScreenSharing is computed from screenStreamRef.current, no setter needed
     cameraStreamRef.current = null;
 
     // 1. Close local stream - use REF to avoid stale closure issues
@@ -623,12 +629,15 @@ export const CallProvider = ({ children }) => {
     if (stream) {
       stream.getTracks().forEach(track => {
         track.stop();
-        console.log('Stopped track:', track.kind);
+        console.log('[CallContext] Stopped local track:', track.kind);
       });
     }
     // Also check state as backup
     if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+      localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('[CallContext] Stopped local stream track (backup):', track.kind);
+      });
     }
     setLocalStream(null);
     localStreamRef.current = null;
@@ -639,19 +648,30 @@ export const CallProvider = ({ children }) => {
       setActiveCall(null);
     }
 
-    // 3. Clean up remote
+    // 3. Clean up remote stream tracks explicitly
+    if (remoteStream) {
+      remoteStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('[CallContext] Stopped remote track:', track.kind);
+      });
+    }
     setRemoteStream(null);
+    
+    // 4. Reset all call UI states
     setCallStatus('idle');
     setIncomingCall(null);
     setOutgoingCallUser(null);
     setIsMuted(false);
-    setIsMuted(false);
     setIsVideoOff(false);
+    
+    // 5. Clean up data connection
     if (dataConnection) {
         dataConnection.close();
         setDataConnection(null);
     }
     stopAllSounds(); // Stop any soundboard effects
+    
+    console.log('[CallContext] Call cleanup complete');
 
     // 4. Cancel signaling if I was the caller and calling is pending
     if (currentCallDocIdRef.current && deleteSignalDoc && outgoingCallUser) {

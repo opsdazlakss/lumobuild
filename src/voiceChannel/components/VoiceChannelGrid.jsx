@@ -3,6 +3,7 @@ import { useVoiceChannel } from '../context/VoiceChannelContext';
 import { FaTimes, FaMicrophoneSlash, FaDesktop, FaExpand, FaCompress } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import { VoiceParticipantContextMenu } from './VoiceParticipantContextMenu';
+import { useSpeakingIndicator } from '../hooks/useSpeakingIndicator';
 
 export const VoiceChannelGrid = ({ onClose }) => {
   const { participants, localStream, screenStream, remoteStreams, isMuted, isScreenSharing } = useVoiceChannel();
@@ -128,6 +129,9 @@ const FullscreenVideo = ({ stream, participant, isLocal, onClose }) => {
 
 const VideoTile = ({ participant, stream, isLocal, isMuted, onExpand, isFocused, onContextMenu }) => {
   const videoRef = useRef(null);
+  
+  // Speaking indicator - only check if not muted
+  const isSpeaking = useSpeakingIndicator(isMuted ? null : stream, { threshold: 5 });
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -139,7 +143,7 @@ const VideoTile = ({ participant, stream, isLocal, isMuted, onExpand, isFocused,
 
   return (
     <div 
-      className={`video-tile ${isLocal ? 'local' : ''} ${isFocused ? 'focused' : ''}`}
+      className={`video-tile ${isLocal ? 'local' : ''} ${isFocused ? 'focused' : ''} ${isSpeaking ? 'speaking' : ''}`}
       onClick={() => hasVideo && onExpand && onExpand()}
       onContextMenu={onContextMenu}
     >

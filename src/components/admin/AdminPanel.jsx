@@ -12,6 +12,8 @@ import { MdClose, MdEdit, MdDelete, MdAdd, MdPeople, MdTag, MdHistory, MdInfo, M
 import { FaHashtag } from 'react-icons/fa';
 import { cn } from '../../utils/helpers';
 import { useToast } from '../../context/ToastContext';
+import { BADGES } from '../../utils/badges';
+import { arrayUnion, arrayRemove } from 'firebase/firestore';
 
 const ADMIN_TABS = [
   { id: 'users', label: 'Users', icon: MdPeople, category: 'Moderation' },
@@ -915,6 +917,43 @@ export const AdminPanel = ({ isOpen, onClose }) => {
                       <span className="text-dark-text">{role.name}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+              
+              {/* Badge Management Section */}
+              <div>
+                <div className="text-sm text-dark-muted mb-2">Badges</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.values(BADGES).map((badge) => {
+                    const hasBadge = currentUserData.badges?.includes(badge.id);
+                    const BadgeIcon = badge.icon;
+                    return (
+                      <button
+                        key={badge.id}
+                        onClick={async () => {
+                          try {
+                            await updateDoc(doc(db, 'users', editingUser.id), {
+                              badges: hasBadge 
+                                ? arrayRemove(badge.id) 
+                                : arrayUnion(badge.id)
+                            });
+                            success(hasBadge ? `${badge.label} badge removed` : `${badge.label} badge granted`);
+                          } catch (err) {
+                            showError('Failed to update badge');
+                          }
+                        }}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-2 rounded-lg border text-left transition-all',
+                          hasBadge
+                            ? 'border-brand-primary bg-brand-primary/20'
+                            : 'border-dark-hover hover:bg-dark-hover'
+                        )}
+                      >
+                        <BadgeIcon size={16} style={{ color: badge.color }} />
+                        <span className="text-dark-text text-sm">{badge.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

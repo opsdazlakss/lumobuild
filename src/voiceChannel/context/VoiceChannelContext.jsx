@@ -2,12 +2,13 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import Peer from 'peerjs';
 import { db } from '../../services/firebase';
 import { 
-  collection, doc, setDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy 
+  collection, doc, setDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy, where 
 } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import { playJoinSound, playLeaveSound, playScreenShareSound } from '../utils/voiceSounds';
 import { useSoundboard } from '../../context/SoundboardContext';
+import { useSpeakingIndicator } from '../hooks/useSpeakingIndicator';
 
 const VoiceChannelContext = createContext();
 
@@ -25,6 +26,7 @@ export const VoiceChannelProvider = ({ children }) => {
   
   // State
   const [currentVoiceChannel, setCurrentVoiceChannel] = useState(null);
+  const [connectedServerId, setConnectedServerId] = useState(null); // Track which server we are connected to
   const [participants, setParticipants] = useState([]);
   const [localStream, setLocalStream] = useState(null);
   const [screenStream, setScreenStream] = useState(null);
@@ -44,6 +46,11 @@ export const VoiceChannelProvider = ({ children }) => {
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   
+  // VAD (Voice Activity Detection) state
+  // DISABLED by default - needs more sophisticated implementation
+  // Current issue: when audio is disabled, can't detect speaking to re-enable
+  const [vadEnabled, setVadEnabled] = useState(false); // Enable/disable VAD feature
+  
   // Refs
   const peerRef = useRef(null);
   const myPeerIdRef = useRef(null);
@@ -52,6 +59,7 @@ export const VoiceChannelProvider = ({ children }) => {
   const connectionsRef = useRef(new Map()); // peerId -> call
   const dataConnectionsRef = useRef(new Map()); // peerId -> dataConnection
   const activeSoundsRef = useRef([]); // Track active sound effects for cleanup
+  const heartbeatIntervalRef = useRef(null); // Heartbeat interval for presence
 
   // Initialize PeerJS
   useEffect(() => {
@@ -169,6 +177,37 @@ export const VoiceChannelProvider = ({ children }) => {
     };
   }, [refreshDevices]);
 
+  // VAD: Voice Activity Detection for local stream
+  // Only apply VAD when not muted and VAD is enabled
+  const shouldCheckVAD = !isMuted && vadEnabled && localStream;
+  const isSpeakingLocal = useSpeakingIndicator(
+    shouldCheckVAD ? localStream : null,
+    { threshold: 15, interval: 50 } // Check more frequently for VAD (50ms)
+  );
+
+  // Apply VAD: disable audio track when not speaking to save bandwidth
+  useEffect(() => {
+    if (!localStreamRef.current || !vadEnabled || isMuted) return;
+
+    const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    // Enable track when speaking, disable when silent
+    // Note: We keep the track object alive, just toggle enabled state
+    // This is different from mute - mute is user-controlled, VAD is automatic
+    if (isSpeakingLocal) {
+      if (!audioTrack.enabled) {
+        audioTrack.enabled = true;
+        console.log('[VAD] Audio enabled - speaking detected');
+      }
+    } else {
+      if (audioTrack.enabled) {
+        audioTrack.enabled = false;
+        console.log('[VAD] Audio disabled - silence detected');
+      }
+    }
+  }, [isSpeakingLocal, vadEnabled, isMuted]);
+
   // Handle active audio device change
   const changeAudioDevice = useCallback(async (deviceId) => {
     setSelectedAudioDeviceId(deviceId);
@@ -219,8 +258,9 @@ export const VoiceChannelProvider = ({ children }) => {
   const prevParticipantsRef = useRef([]);
   const prevScreenSharersRef = useRef(new Set());
   
+  // Listen for participants
   useEffect(() => {
-    if (!currentVoiceChannel || !currentServer) {
+    if (!currentVoiceChannel || !connectedServerId) {
       setParticipants([]);
       prevParticipantsRef.current = [];
       prevScreenSharersRef.current = new Set();
@@ -228,10 +268,11 @@ export const VoiceChannelProvider = ({ children }) => {
     }
 
     const participantsRef = collection(
-      db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants'
+      db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants'
     );
+    const q = query(participantsRef, orderBy('joinedAt', 'asc'));
 
-    const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const participantsData = [];
       snapshot.forEach((doc) => {
         participantsData.push({ odaId: doc.id, ...doc.data() });
@@ -270,6 +311,43 @@ export const VoiceChannelProvider = ({ children }) => {
       prevScreenSharersRef.current = currentScreenSharers;
       
       setParticipants(participantsData);
+
+      // GHOST USER FIX: Remove stale participants (no heartbeat for >15 seconds)
+      const now = Date.now();
+      participantsData.forEach(async (participant) => {
+        // Skip if no lastHeartbeat (old data) or if it's the current user
+        if (!participant.lastHeartbeat || participant.odaId === currentUser?.uid) return;
+
+        const lastHeartbeatTime = participant.lastHeartbeat.toMillis ? participant.lastHeartbeat.toMillis() : participant.lastHeartbeat;
+        const timeSinceHeartbeat = now - lastHeartbeatTime;
+
+        // If no heartbeat for 15 seconds, remove participant
+        if (timeSinceHeartbeat > 15000) {
+          console.log('[VoiceChannel] Removing stale participant:', participant.displayName, 'Last heartbeat:', timeSinceHeartbeat / 1000, 's ago');
+          try {
+            const staleParticipantRef = doc(
+              db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', participant.odaId
+            );
+            await deleteDoc(staleParticipantRef);
+          } catch (err) {
+            console.error('[VoiceChannel] Failed to remove stale participant:', err);
+          }
+        }
+      });
+
+      // Update remote streams map based on participants
+      setRemoteStreams(prev => {
+        const newMap = new Map(prev);
+        // Remove streams for participants who left
+        for (const [peerId] of prev) {
+          // Check if peerId exists in current participants (checking both peerId and id fields)
+          const stillExists = participantsData.some(p => p.peerId === peerId || p.odaId === peerId);
+          if (!stillExists) {
+            newMap.delete(peerId);
+          }
+        }
+        return newMap;
+      });
 
       // Connect to new participants
       participantsData.forEach((participant) => {
@@ -351,7 +429,7 @@ export const VoiceChannelProvider = ({ children }) => {
     });
 
     return () => unsubscribe();
-  }, [currentVoiceChannel, currentServer, currentUser]);
+  }, [currentVoiceChannel, connectedServerId, currentUser]);
 
   // Join voice channel
   const joinVoiceChannel = useCallback(async (channelId) => {
@@ -390,7 +468,32 @@ export const VoiceChannelProvider = ({ children }) => {
         isScreenSharing: false
       });
 
+      // GHOST USER FIX: Setup heartbeat-based presence system
+      // Update lastHeartbeat every 5 seconds to show we're still connected
+      const updateHeartbeat = async () => {
+        if (currentVoiceChannel && currentUser && connectedServerId) {
+          try {
+            const participantRef = doc(
+              db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+            );
+            await setDoc(participantRef, { 
+              lastHeartbeat: serverTimestamp() 
+            }, { merge: true });
+          } catch (err) {
+            console.error('[VoiceChannel] Heartbeat failed:', err);
+          }
+        }
+      };
+
+      // Initial heartbeat
+      await updateHeartbeat();
+
+      // Setup heartbeat interval (every 5 seconds)
+      heartbeatIntervalRef.current = setInterval(updateHeartbeat, 5000);
+      console.log('[VoiceChannel] Heartbeat started');
+
       setCurrentVoiceChannel(channelId);
+      setConnectedServerId(currentServer); // Set the connected server
       setIsMuted(false);
       setIsVideoOn(false);
       setIsScreenSharing(false);
@@ -402,16 +505,23 @@ export const VoiceChannelProvider = ({ children }) => {
     } catch (err) {
       console.error('[VoiceChannel] Failed to join:', err);
     }
-  }, [currentUser, currentServer, userProfile]);
+  }, [currentUser, currentServer, userProfile, selectedAudioDeviceId]);
 
   // Leave voice channel
   const leaveVoiceChannel = useCallback(async () => {
-    if (!currentVoiceChannel || !currentUser || !currentServer) return;
+    if (!currentVoiceChannel || !currentUser || !connectedServerId) return;
 
     try {
+      // Stop heartbeat
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+        console.log('[VoiceChannel] Heartbeat stopped');
+      }
+
       // Remove from Firestore
       const participantRef = doc(
-        db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+        db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
       );
       await deleteDoc(participantRef);
 
@@ -438,10 +548,13 @@ export const VoiceChannelProvider = ({ children }) => {
       // Close all peer connections
       connectionsRef.current.forEach((call) => call.close());
       connectionsRef.current.clear();
+      dataConnectionsRef.current.forEach((conn) => conn.close());
+      dataConnectionsRef.current.clear();
 
       // Clear all state
       setRemoteStreams(new Map());
       setCurrentVoiceChannel(null);
+      setConnectedServerId(null);
       setParticipants([]);
       setIsVideoOn(false);
       setIsScreenSharing(false);
@@ -469,26 +582,36 @@ export const VoiceChannelProvider = ({ children }) => {
     } catch (err) {
       console.error('[VoiceChannel] Failed to leave:', err);
     }
-  }, [currentVoiceChannel, currentUser, currentServer]);
+  }, [currentVoiceChannel, currentUser, connectedServerId]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
     if (localStreamRef.current) {
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
+        const newMutedState = !isMuted;
+        setIsMuted(newMutedState);
+        
+        // When muting, always disable track
+        // When unmuting, VAD will handle enabling if speaking
+        if (newMutedState) {
+          audioTrack.enabled = false;
+        } else if (!vadEnabled) {
+          // If VAD is disabled, enable immediately on unmute
+          audioTrack.enabled = true;
+        }
+        // If VAD is enabled, the VAD useEffect will handle enabling when speaking
 
         // Update Firestore
-        if (currentVoiceChannel && currentUser && currentServer) {
+        if (currentVoiceChannel && currentUser && connectedServerId) {
           const participantRef = doc(
-            db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+            db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
           );
-          setDoc(participantRef, { isMuted: !audioTrack.enabled }, { merge: true });
+          setDoc(participantRef, { isMuted: newMutedState }, { merge: true });
         }
       }
     }
-  }, [currentVoiceChannel, currentUser, currentServer]);
+  }, [currentVoiceChannel, currentUser, connectedServerId, isMuted, vadEnabled]);
 
   // Toggle deafen
   const toggleDeafen = useCallback(() => {
@@ -538,16 +661,16 @@ export const VoiceChannelProvider = ({ children }) => {
       }
 
       // Update Firestore
-      if (currentUser && currentServer) {
+      if (currentUser && connectedServerId) {
         const participantRef = doc(
-          db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+          db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
         );
         setDoc(participantRef, { isVideoOn: !isVideoOn }, { merge: true });
       }
     } catch (err) {
       console.error('[VoiceChannel] Failed to toggle video:', err);
     }
-  }, [isVideoOn, currentVoiceChannel, currentUser, currentServer]);
+  }, [isVideoOn, currentVoiceChannel, currentUser, connectedServerId]);
 
   // Toggle screen share
   const toggleScreenShare = useCallback(async (options = null) => {
@@ -565,9 +688,9 @@ export const VoiceChannelProvider = ({ children }) => {
         setScreenStream(null);
         
         // Update Firestore
-        if (currentUser && currentServer) {
+        if (currentUser && connectedServerId) {
           const participantRef = doc(
-            db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+            db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
           );
           setDoc(participantRef, { isScreenSharing: false }, { merge: true });
         }
@@ -577,53 +700,124 @@ export const VoiceChannelProvider = ({ children }) => {
       // Start screen share with options from ScreenShareModal
       let screenStream;
       
-      // Build video constraints
+      // PERFORMANCE FIX: Lower default values for smoother experience
+      // Premium users can use higher quality via options
       const videoConstraints = {
-        width: options?.width || 1280,
-        height: options?.height || 720,
-        frameRate: options?.frameRate || 30
+        width: options?.width || 960,      // Reduced from 1280
+        height: options?.height || 540,    // Reduced from 720
+        frameRate: options?.frameRate || 15 // Reduced from 30
       };
+
+      console.log('[VoiceChannel] Screen share starting with constraints:', videoConstraints);
 
       // For Electron with sourceId
       if (options?.sourceId) {
+        // ELECTRON: Don't capture system audio - causes unwanted sounds from other apps
         screenStream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
+          audio: false, // No system audio for Electron
           video: {
             mandatory: {
               chromeMediaSource: 'desktop',
               chromeMediaSourceId: options.sourceId,
-              ...videoConstraints
+              maxWidth: videoConstraints.width,
+              maxHeight: videoConstraints.height,
+              maxFrameRate: videoConstraints.frameRate
             }
           }
         });
       } else {
-        // Fallback for web browser
+        // WEB: Use getDisplayMedia - user can choose to share audio
         screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: videoConstraints,
-          audio: true
+          video: {
+            width: { ideal: videoConstraints.width },
+            height: { ideal: videoConstraints.height },
+            frameRate: { ideal: videoConstraints.frameRate },
+            cursor: 'always'
+          },
+          audio: {
+            // System audio settings - reduced quality to prevent echo
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: false
+          }
         });
       }
 
-      screenStreamRef.current = screenStream;
+      // FIX: Mix microphone audio with screen share
+      // This ensures your voice is heard during screen share
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+      const screenAudioTrack = screenStream.getAudioTracks()[0]; // May be undefined if user didn't share audio
+      
+      // Get current microphone audio from local stream
+      const micAudioTrack = localStreamRef.current?.getAudioTracks()[0];
+      
+      let finalAudioTrack = null;
+      
+      if (micAudioTrack && screenAudioTrack) {
+        // Mix both: microphone + system audio
+        console.log('[VoiceChannel] Mixing microphone and system audio');
+        try {
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const destination = audioContext.createMediaStreamDestination();
+          
+          // Create sources
+          const micSource = audioContext.createMediaStreamSource(new MediaStream([micAudioTrack]));
+          const screenSource = audioContext.createMediaStreamSource(new MediaStream([screenAudioTrack]));
+          
+          // Create gain nodes for volume control
+          const micGain = audioContext.createGain();
+          const screenGain = audioContext.createGain();
+          
+          micGain.gain.value = 1.0;      // Full mic volume
+          screenGain.gain.value = 0.5;   // Reduced system audio to not overpower voice
+          
+          // Connect
+          micSource.connect(micGain);
+          screenSource.connect(screenGain);
+          micGain.connect(destination);
+          screenGain.connect(destination);
+          
+          finalAudioTrack = destination.stream.getAudioTracks()[0];
+        } catch (e) {
+          console.error('[VoiceChannel] Audio mixing failed, using mic only:', e);
+          finalAudioTrack = micAudioTrack;
+        }
+      } else if (micAudioTrack) {
+        // Only microphone (no system audio selected or Electron)
+        console.log('[VoiceChannel] Using microphone audio only');
+        finalAudioTrack = micAudioTrack;
+      } else if (screenAudioTrack) {
+        // Only system audio (no mic available)
+        console.log('[VoiceChannel] Using system audio only');
+        finalAudioTrack = screenAudioTrack;
+      }
+      
+      // Create final stream with video + mixed audio
+      const finalStream = new MediaStream([screenVideoTrack]);
+      if (finalAudioTrack) {
+        finalStream.addTrack(finalAudioTrack);
+      }
+
+      screenStreamRef.current = finalStream;
 
       // Handle when user stops sharing via browser UI
-      screenStream.getVideoTracks()[0].onended = () => {
+      screenVideoTrack.onended = () => {
         setIsScreenSharing(false);
         setScreenStream(null);
         screenStreamRef.current = null;
         
         // Update Firestore
-        if (currentUser && currentServer && currentVoiceChannel) {
+        if (currentUser && connectedServerId && currentVoiceChannel) {
           const participantRef = doc(
-            db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+            db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
           );
           setDoc(participantRef, { isScreenSharing: false }, { merge: true });
         }
       };
 
-      // Reconnect to all peers with screen stream
+      // Reconnect to all peers with the combined stream (video + audio)
       connectionsRef.current.forEach((call, peerId) => {
-        const newCall = peerRef.current.call(peerId, screenStream);
+        const newCall = peerRef.current.call(peerId, finalStream);
         if (newCall) {
           newCall.on('stream', (remoteStream) => {
             setRemoteStreams(prev => new Map(prev).set(peerId, remoteStream));
@@ -632,34 +826,35 @@ export const VoiceChannelProvider = ({ children }) => {
       });
 
       setIsScreenSharing(true);
-      setScreenStream(screenStream);
+      setScreenStream(finalStream);
 
       // Play screen share sound for self
       playScreenShareSound();
       
       // Update Firestore
-      if (currentUser && currentServer) {
-        const participantRef = doc(
-          db, 'servers', currentServer, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
-        );
-        setDoc(participantRef, { isScreenSharing: true }, { merge: true });
-      }
-    } catch (err) {
-      console.error('[VoiceChannel] Failed to toggle screen share:', err);
+    if (currentUser && connectedServerId) {
+      const participantRef = doc(
+        db, 'servers', connectedServerId, 'channels', currentVoiceChannel, 'voiceParticipants', currentUser.uid
+      );
+      setDoc(participantRef, { isScreenSharing: true }, { merge: true });
     }
-  }, [isScreenSharing, currentVoiceChannel, currentUser, currentServer]);
+  } catch (err) {
+    console.error('[VoiceChannel] Failed to toggle screen share:', err);
+  }
+}, [isScreenSharing, currentVoiceChannel, currentUser, connectedServerId, localStreamRef, screenStreamRef, connectionsRef, dataConnectionsRef, remoteStreams, setRemoteStreams, setIsScreenSharing, setScreenStream, playScreenShareSound]);
 
   // Get voice channels from current server
   const voiceChannels = channels?.filter(ch => ch.type === 'voice') || [];
 
   // Cleanup on unmount or server change
+  // Cleanup on unmount or channel change
   useEffect(() => {
     return () => {
       if (currentVoiceChannel) {
         leaveVoiceChannel();
       }
     };
-  }, [currentServer]);
+  }, [currentVoiceChannel, connectedServerId]);
 
   const { customSounds } = useSoundboard();
 
@@ -694,6 +889,7 @@ export const VoiceChannelProvider = ({ children }) => {
   const value = {
     // State
     currentVoiceChannel,
+    connectedServerId,
     participants,
     localStream,
     screenStream,
@@ -707,6 +903,7 @@ export const VoiceChannelProvider = ({ children }) => {
     isScreenSharing,
     audioDevices,
     selectedAudioDeviceId,
+    vadEnabled,
     
     // Actions
     joinVoiceChannel,
@@ -725,7 +922,8 @@ export const VoiceChannelProvider = ({ children }) => {
         return newMap;
       });
     },
-    playSound
+    playSound,
+    toggleVAD: () => setVadEnabled(prev => !prev)
   };
 
   return (

@@ -4,9 +4,13 @@ import { BADGES } from '../../utils/badges';
 import { useCall } from '../../context/CallContext';
 import { useAuth } from '../../context/AuthContext';
 import { MdPhone, MdVideocam, MdMessage, MdRocketLaunch } from 'react-icons/md';
+import { isUserOnline } from '../../hooks/usePresence';
 
 export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
   if (!user) return null;
+
+  // Check if user is actually online based on lastSeen timestamp
+  const userIsOnline = user.presence !== 'invisible' && isUserOnline(user.lastSeen);
 
   const getRoleColor = (role) => {
     const colors = {
@@ -103,7 +107,7 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
                   const uniqueBadgeIds = new Set(user.badges || []);
                   if (user.role === 'admin') uniqueBadgeIds.add('admin');
                   const badgesToRender = Array.from(uniqueBadgeIds)
-                    .filter(id => id !== 'premium') // Hide premium badge from list as per request
+                    // .filter(id => id !== 'premium') // Removed filter so premium badge shows
                     .map(id => BADGES[id])
                     .filter(Boolean);
                   if (badgesToRender.length === 0) return null;
@@ -137,9 +141,9 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
             <div className="flex items-center gap-3 mt-4 bg-black/30 px-4 py-2 rounded-full backdrop-blur-sm border border-white/5">
                 {/* Presence Dot */}
                 <div className={cn('w-3 h-3 rounded-full shadow-lg shadow-white/20', 
-                    user.presence === 'online' || (!user.presence && user.isOnline) ? 'bg-green-500' : 
-                    user.presence === 'idle' ? 'bg-yellow-500' : 
-                    user.presence === 'dnd' ? 'bg-red-500' : 'bg-gray-500'
+                    userIsOnline && (user.presence === 'online' || !user.presence) ? 'bg-green-500' : 
+                    userIsOnline && user.presence === 'idle' ? 'bg-yellow-500' : 
+                    userIsOnline && user.presence === 'dnd' ? 'bg-red-500' : 'bg-gray-500'
                 )} />
                 
                 {/* Custom Status Text */}
@@ -150,7 +154,7 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
                    </span>
                 ) : (
                    <span className="text-sm text-gray-300">
-                      {user.presence === 'online' || (!user.presence && user.isOnline) ? 'Online' : 'Offline'}
+                      {userIsOnline ? (user.presence === 'idle' ? 'Idle' : user.presence === 'dnd' ? 'Do Not Disturb' : 'Online') : 'Offline'}
                    </span>
                 )}
             </div>

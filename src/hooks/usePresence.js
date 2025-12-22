@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
-const HEARTBEAT_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+const HEARTBEAT_INTERVAL = 4 * 60 * 1000; // 4 minutes (Balanced for quota and stability)
 
 /**
  * usePresence hook - Sends periodic heartbeat updates to Firestore
@@ -54,10 +54,10 @@ export const usePresence = (userId) => {
  * Utility function to check if a user is online based on lastSeen timestamp.
  * Used by UserList and other components to determine online status.
  * @param {Timestamp} lastSeen - Firestore timestamp
- * @param {number} thresholdMinutes - Minutes of inactivity before considered offline (default: 6)
+ * @param {number} thresholdMinutes - Minutes of inactivity before considered offline (default: 10)
  * @returns {boolean} - True if user is considered online
  */
-export const isUserOnline = (lastSeen, thresholdMinutes = 6) => {
+export const isUserOnline = (lastSeen, thresholdMinutes = 10) => {
   if (!lastSeen) return false;
   
   // Handle both Firestore Timestamp and JS Date

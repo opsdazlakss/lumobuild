@@ -4,9 +4,11 @@ import { cn } from '../../utils/helpers';
 import { ServerContextMenu } from '../server/ServerContextMenu';
 import lumoLogo from '../../assets/lumo-logo.png';
 
-export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCreateServer, onJoinServer, userRole, userId, unreadMentions = {} }) => {
+export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCreateServer, onJoinServer, userRole, userId, unreadMentions = {}, unreadDms = {} }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+
+  const totalUnreadDms = Object.values(unreadDms).reduce((acc, curr) => acc + (curr.count || 0), 0);
 
   const handleContextMenu = (e, server) => {
     e.preventDefault();
@@ -20,19 +22,30 @@ export const ServerSwitcher = ({ servers, currentServerId, onServerChange, onCre
     <div className="w-20 bg-dark-bg h-full flex flex-col items-center pt-safe-top md:pt-0 box-content">
       {/* Lumo Logo - Independent Section */}
       <div className="flex flex-col items-center">
-        <button 
-          onClick={() => onServerChange('home')}
-          className={cn(
-            "transition-all duration-200 rounded-2xl overflow-hidden",
-            currentServerId === 'home' || !currentServerId ? "rounded-xl ring-2 ring-brand-primary ring-offset-2 ring-offset-dark-bg" : "hover:rounded-xl"
+        <div className="relative">
+          <button 
+            onClick={() => onServerChange('home')}
+            className={cn(
+              "transition-all duration-200 rounded-2xl overflow-hidden",
+              currentServerId === 'home' || !currentServerId ? "rounded-xl ring-2 ring-brand-primary ring-offset-2 ring-offset-dark-bg" : "hover:rounded-xl"
+            )}
+          >
+            <img 
+              src={lumoLogo} 
+              alt="Home" 
+              className="w-16 h-16 object-contain cursor-pointer bg-dark-bg p-1"
+            />
+          </button>
+          
+          {/* Total DM Unread Badge */}
+          {totalUnreadDms > 0 && (
+            <div className="absolute top-0 right-0 min-w-5 h-5 bg-red-500 rounded-full flex items-center justify-center border-2 border-dark-bg pointer-events-none">
+              <span className="text-white text-xs font-bold px-1">
+                {totalUnreadDms > 99 ? '99+' : totalUnreadDms}
+              </span>
+            </div>
           )}
-        >
-          <img 
-            src={lumoLogo} 
-            alt="Home" 
-            className="w-16 h-16 object-contain cursor-pointer bg-dark-bg p-1"
-          />
-        </button>
+        </div>
       </div>
 
       {/* Separator */}

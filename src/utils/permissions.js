@@ -68,3 +68,32 @@ export const hasCapability = (user, capability) => {
 
   return false;
 };
+
+/**
+ * Checks if a user has Premium status.
+ * This is the SINGLE SOURCE OF TRUTH for premium checks.
+ * Use this function instead of inline checks to ensure consistency.
+ * 
+ * @param {Object} userProfile - The user profile object
+ * @returns {boolean} - True if user has premium access
+ */
+export const isPremiumUser = (userProfile) => {
+  if (!userProfile) return false;
+
+  // 1. Check role (admin always has premium features)
+  if (userProfile.role === 'admin') return true;
+  if (userProfile.role === 'premium') return true;
+
+  // 2. Check badges array
+  if (userProfile.badges?.includes('premium')) return true;
+  if (userProfile.badges?.includes('developer')) return true;
+
+  // 3. Check plan field (for subscription-based premium)
+  if (userProfile.plan === 'premium') return true;
+
+  // 4. Check roles array (some systems use this)
+  if (userProfile.roles?.includes('premium')) return true;
+  if (userProfile.roles?.includes('admin')) return true;
+
+  return false;
+};

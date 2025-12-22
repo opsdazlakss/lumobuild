@@ -14,6 +14,7 @@ import { ReactionPicker } from './ReactionPicker';
 import { PollDisplay } from './PollDisplay';
 import { StatusIndicator } from '../shared/StatusIndicator';
 import { MessageLinkPreviews, detectLinkType, extractUrls } from '../shared/LinkPreview';
+import { MediaViewerModal } from '../shared/MediaViewerModal';
 
 export const MessageList = ({ serverId, channelId, users, currentUserId, userRole, onReply, onMessagesChange }) => {
   const [messages, setMessages] = useState([]);
@@ -28,6 +29,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [oldestMessage, setOldestMessage] = useState(null);
+  const [mediaViewer, setMediaViewer] = useState(null); // { url, type }
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const lastMessageCountRef = useRef(0);
@@ -610,7 +612,7 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
                             src={message.text} 
                             alt="Sticker" 
                             className="w-40 h-40 object-contain drop-shadow-md hover:scale-110 transition-transform origin-bottom-left select-none cursor-pointer"
-                            onClick={() => window.open(message.text, '_blank')}
+                            onClick={() => setMediaViewer({ url: message.text, type: 'image' })}
                           />
                        </div>
                     )}
@@ -726,6 +728,13 @@ export const MessageList = ({ serverId, channelId, users, currentUserId, userRol
         user={selectedUserProfile}
         isOpen={!!selectedUserProfile}
         onClose={() => setSelectedUserProfile(null)}
+      />
+
+      <MediaViewerModal
+        isOpen={!!mediaViewer}
+        onClose={() => setMediaViewer(null)}
+        mediaUrl={mediaViewer?.url}
+        mediaType={mediaViewer?.type}
       />
     </div>
   );

@@ -12,7 +12,7 @@ import { DMList } from '../dm/DMList';
 import { VoiceChannelSection } from '../../voiceChannel/components/VoiceChannelSection';
 import { VoiceChannelBar } from '../../voiceChannel/components/VoiceChannelBar';
 
-export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId, dms, selectedDm, onSelectDm }) => {
+export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId, dms, unreadDms, selectedDm, onSelectDm }) => {
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -57,6 +57,7 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
         {serverId === 'home' ? (
            <DMList 
              dms={dms} 
+             unreadDms={unreadDms}
              selectedDmId={selectedDm?.id} 
              onSelectDm={onSelectDm} 
            />

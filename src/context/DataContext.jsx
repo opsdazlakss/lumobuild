@@ -22,6 +22,7 @@ export const DataProvider = ({ children }) => {
   const [channels, setChannels] = useState([]);
   const [server, setServer] = useState(null);
   const [unreadMentions, setUnreadMentions] = useState({});
+  const [unreadDms, setUnreadDms] = useState({});
   const [dms, setDms] = useState([]);
   const lastMentionCountRef = useRef({});
   const isDmInitialLoad = useRef(true);
@@ -219,6 +220,7 @@ export const DataProvider = ({ children }) => {
       );
       
       setUnreadMentions(mentions);
+      setUnreadDms(userData?.unreadDms || {});
 
       // Update the server IDs state to trigger the subscription effect
       // Only update if IDs actually changed to avoid re-subscribing
@@ -390,6 +392,7 @@ export const DataProvider = ({ children }) => {
     server,
     dms,
     unreadMentions,
+    unreadDms,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -9,6 +9,7 @@ import { StickerPicker } from './StickerPicker';
 import { PollCreator } from './PollCreator';
 import { uploadToCloudinary } from '../../services/cloudinary';
 import { uploadToImgBB } from '../../services/imgbb';
+import { isPremiumUser } from '../../utils/permissions';
 
 export const MessageInput = ({ serverId, channelId, channel, userId, userProfile, userRole, users, replyingTo, onCancelReply }) => {
   const [message, setMessage] = useState('');
@@ -76,6 +77,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           updatedAt: serverTimestamp(),
           hiddenFor: [] // Unhide for everyone on new message
         });
+
+        // Update unread count for the recipient
+        const recipient = users.find(u => u.id !== userId);
+        if (recipient) {
+          await updateDoc(doc(db, 'users', recipient.id), {
+            [`unreadDms.${channelId}.count`]: increment(1),
+            [`unreadDms.${channelId}.lastMessageAt`]: serverTimestamp(),
+            [`unreadDms.${channelId}.text`]: 'GIF'
+          }).catch(err => console.error('Error updating unread DM count:', err));
+        }
       }
     } catch (err) {
       console.error('Error sending GIF:', err);
@@ -88,9 +99,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const handleStickerSelect = async (stickerUrl) => {
     setShowStickerPicker(false);
     
-    // Check permissions
-    const isPremium = userRole === 'admin' || userRole === 'premium';
-    if (!isPremium) {
+    // Check permissions using centralized helper
+    if (!isPremiumUser(userProfile)) {
       error('Stickers are for Premium members only!');
       return;
     }
@@ -119,6 +129,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           updatedAt: serverTimestamp(),
           hiddenFor: []
         });
+
+        // Update unread count for the recipient
+        const recipient = users.find(u => u.id !== userId);
+        if (recipient) {
+          await updateDoc(doc(db, 'users', recipient.id), {
+            [`unreadDms.${channelId}.count`]: increment(1),
+            [`unreadDms.${channelId}.lastMessageAt`]: serverTimestamp(),
+            [`unreadDms.${channelId}.text`]: '✨ Sticker'
+          }).catch(err => console.error('Error updating unread DM count:', err));
+        }
       }
     } catch (err) {
       console.error('Error sending Sticker:', err);
@@ -162,6 +182,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           updatedAt: serverTimestamp(),
           hiddenFor: [] // Unhide for everyone on new message
         });
+
+        // Update unread count for the recipient
+        const recipient = users.find(u => u.id !== userId);
+        if (recipient) {
+          await updateDoc(doc(db, 'users', recipient.id), {
+            [`unreadDms.${channelId}.count`]: increment(1),
+            [`unreadDms.${channelId}.lastMessageAt`]: serverTimestamp(),
+            [`unreadDms.${channelId}.text`]: `📊 Poll: ${pollData.question}`
+          }).catch(err => console.error('Error updating unread DM count:', err));
+        }
       }
     } catch (err) {
       console.error('Error creating poll:', err);
@@ -174,8 +204,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
   const processFileSelection = (file) => {
     if (!file) return;
 
-    // File size limits
-    const isPremium = userRole === 'admin' || userRole === 'premium' || userProfile?.plan === 'premium';
+    // File size limits - use centralized premium check
+    const isPremium = isPremiumUser(userProfile);
     const maxSize = isPremium ? 200 * 1024 * 1024 : 10 * 1024 * 1024; // 200MB vs 10MB
 
     if (file.size > maxSize) {
@@ -326,6 +356,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           updatedAt: serverTimestamp(),
           hiddenFor: [] // Unhide for everyone on new message
         });
+
+        // Update unread count for the recipient
+        const recipient = users.find(u => u.id !== userId);
+        if (recipient) {
+          await updateDoc(doc(db, 'users', recipient.id), {
+            [`unreadDms.${channelId}.count`]: increment(1),
+            [`unreadDms.${channelId}.lastMessageAt`]: serverTimestamp(),
+            [`unreadDms.${channelId}.text`]: selectedFile.type.startsWith('image/') ? '📷 Image' : '📎 Attachment'
+          }).catch(err => console.error('Error updating unread DM count:', err));
+        }
       }
       handleCancelPreview(); // Cleanup
     } catch (err) {
@@ -506,6 +546,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           updatedAt: serverTimestamp(),
           hiddenFor: [] // Unhide for everyone on new message
         });
+
+        // Update unread count for the recipient
+        const recipient = users.find(u => u.id !== userId);
+        if (recipient) {
+          await updateDoc(doc(db, 'users', recipient.id), {
+            [`unreadDms.${channelId}.count`]: increment(1),
+            [`unreadDms.${channelId}.lastMessageAt`]: serverTimestamp(),
+            [`unreadDms.${channelId}.text`]: message.trim().substring(0, 50)
+          }).catch(err => console.error('Error updating unread DM count:', err));
+        }
       }
       
       setMessage('');
@@ -819,26 +869,16 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
            </button>
 
           {/* Sticker Button - Premium Only */}
-          {(() => {
-             const isPremium = 
-                userRole === 'admin' || 
-                userRole === 'premium' || 
-                userProfile?.badges?.includes('premium') ||
-                userProfile?.plan === 'premium';
-
-             if (!isPremium) return null;
-
-             return (
-               <button
-                 type="button"
-                 onClick={() => setShowStickerPicker(!showStickerPicker)}
-                 className={`transition-colors ${showStickerPicker ? 'text-brand-primary' : 'text-dark-muted hover:text-brand-primary'}`}
-                 title="Premium Stickers"
-               >
-                 <MdAutoAwesome size={24} />
-               </button>
-             );
-          })()}
+          {isPremiumUser(userProfile) && (
+              <button
+                type="button"
+                onClick={() => setShowStickerPicker(!showStickerPicker)}
+                className={`transition-colors ${showStickerPicker ? 'text-brand-primary' : 'text-dark-muted hover:text-brand-primary'}`}
+                title="Premium Stickers"
+              >
+                <MdAutoAwesome size={24} />
+              </button>
+          )}
 
           {/* Emoji Button */}
           <button

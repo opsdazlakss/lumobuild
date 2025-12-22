@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { useSwipe } from '../hooks/useSwipe';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -31,7 +31,7 @@ import '../voiceChannel/voiceChannel.css';
 
 export const MainApp = () => {
   const { currentUser, userProfile, logout } = useAuth();
-  const { users, channels, server, servers, currentServer, setCurrentServer, unreadMentions, dms } = useData();
+  const { users, channels, server, servers, currentServer, setCurrentServer, unreadMentions, unreadDms, dms } = useData();
   
   // Send presence heartbeat every 5 minutes
   usePresence(currentUser?.uid);
@@ -141,6 +141,17 @@ export const MainApp = () => {
       });
     }
   }, [currentServer, currentUser, unreadMentions]);
+  
+  useEffect(() => {
+    if (!currentUser || !selectedDm || !unreadDms) return;
+    if (unreadDms[selectedDm.id]?.count > 0) {
+      updateDoc(doc(db, 'users', currentUser.uid), {
+        [`unreadDms.${selectedDm.id}`]: deleteField()
+      }).catch(err => {
+        console.error('Error clearing unread DM count:', err);
+      });
+    }
+  }, [selectedDm, currentUser, unreadDms]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -178,25 +189,58 @@ export const MainApp = () => {
 
   const handleStartDm = async (targetUser) => {
     if (!currentUser || !targetUser) return;
-    const existingDm = dms.find(dm => 
-      dm.participants.includes(targetUser.id) && 
-      dm.participants.includes(currentUser.uid)
-    );
-    if (existingDm) {
-      setSelectedDm(existingDm);
-      handleServerChange('home');
-    } else {
-      try {
-        await addDoc(collection(db, 'dms'), {
+    
+    try {
+      // 1. Check local state first (fastest)
+      let targetDm = dms.find(dm => 
+        dm.participants.includes(targetUser.id) && 
+        dm.participants.includes(currentUser.uid)
+      );
+
+      // 2. If not found in local (might be hidden), check Firestore
+      if (!targetDm) {
+        const q = query(
+          collection(db, 'dms'),
+          where('participants', 'array-contains', currentUser.uid)
+        );
+        const snapshot = await getDocs(q);
+        const existingDoc = snapshot.docs.find(doc => {
+          const data = doc.data();
+          return data.participants.includes(targetUser.id);
+        });
+
+        if (existingDoc) {
+          targetDm = { id: existingDoc.id, ...existingDoc.data() };
+        }
+      }
+
+      if (targetDm) {
+        // 3. If DM exists, unhide it if necessary
+        if (targetDm.hiddenFor?.includes(currentUser.uid)) {
+          await updateDoc(doc(db, 'dms', targetDm.id), {
+            hiddenFor: targetDm.hiddenFor.filter(id => id !== currentUser.uid)
+          });
+        }
+        setSelectedDm(targetDm);
+      } else {
+        // 4. Create new DM if none exists
+        const newDmData = {
           participants: [currentUser.uid, targetUser.id],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          lastMessage: null
-        });
-        handleServerChange('home');
-      } catch (err) {
-        console.error('Error creating DM:', err);
+          lastMessage: null,
+          hiddenFor: []
+        };
+        const docRef = await addDoc(collection(db, 'dms'), newDmData);
+        // Important: Set selectedDm with the new ID so it opens immediately
+        setSelectedDm({ id: docRef.id, ...newDmData });
       }
+
+      // Always switch to Home view to show the DM
+      handleServerChange('home');
+      
+    } catch (err) {
+      console.error('Error starting DM:', err);
     }
   };
 
@@ -223,6 +267,7 @@ export const MainApp = () => {
               userRole={userProfile?.role}
               userId={currentUser?.uid}
               unreadMentions={unreadMentions}
+              unreadDms={unreadDms}
             />
             <Sidebar
               server={server}
@@ -237,6 +282,7 @@ export const MainApp = () => {
               userRole={userProfile?.role}
               userId={currentUser?.uid}
               dms={dms}
+              unreadDms={unreadDms}
               selectedDm={selectedDm}
               onSelectDm={setSelectedDm}
             />
@@ -258,6 +304,7 @@ export const MainApp = () => {
                   userRole={userProfile?.role}
                   userId={currentUser?.uid}
                   unreadMentions={unreadMentions}
+                  unreadDms={unreadDms}
                 />
                 <Sidebar
                   server={server}
@@ -281,6 +328,7 @@ export const MainApp = () => {
                   userRole={userProfile?.role}
                   userId={currentUser?.uid}
                   dms={dms}
+                  unreadDms={unreadDms}
                   selectedDm={selectedDm}
                   onSelectDm={(dm) => {
                     setSelectedDm(dm);

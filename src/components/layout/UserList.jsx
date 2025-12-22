@@ -7,6 +7,7 @@ import { isUserOnline as checkUserOnline } from '../../hooks/usePresence';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useData } from '../../context/DataContext';
+import { getBadge, BADGES } from '../../utils/badges';
 
 export const UserList = ({ users, currentUserId, onStartDm }) => {
   const { currentServer } = useData();
@@ -35,8 +36,14 @@ export const UserList = ({ users, currentUserId, onStartDm }) => {
   const isUserOnline = (user) => {
     // Invisible users appear offline
     if (user.presence === 'invisible') return false;
-    // Calculate online status from lastSeen timestamp (within last 6 minutes)
-    return checkUserOnline(user.lastSeen);
+    
+    // Calculate online status from lastSeen timestamp (safest source)
+    const activeByTime = checkUserOnline(user.lastSeen);
+    
+    // Optimization: If isOnline is true AND time check is within buffer, they are definitely online.
+    // If isOnline is false, we still trust the time check for a few minutes to handle potential 
+    // race conditions where isOnline was set to false but user is still actually here.
+    return activeByTime;
   };
   
   // Separate online and offline users
@@ -112,12 +119,26 @@ export const UserList = ({ users, currentUserId, onStartDm }) => {
             <span className="text-sm text-dark-text truncate">
               {user.displayName || 'Unknown'}
             </span>
-            <span className={cn(
-              'text-xs px-1.5 py-0.5 rounded border',
-              getRoleBadgeColor(user.serverRole || user.role)
-            )}>
-              {(user.serverRole || user.role)?.charAt(0).toUpperCase() + (user.serverRole || user.role)?.slice(1)}
-            </span>
+            {/* Badge Icons */}
+            {user.badges && user.badges.length > 0 && (
+              <div className="flex items-center gap-0.5">
+                {user.badges.slice(0, 3).map((badgeId) => {
+                  const badge = getBadge(badgeId);
+                  if (!badge) return null;
+                  const BadgeIcon = badge.icon;
+                  return (
+                    <BadgeIcon 
+                      key={badgeId}
+                      size={14}
+                      style={{ color: badge.color }}
+                      title={badge.label}
+                      className="flex-shrink-0"
+                    />
+                  );
+                })}
+              </div>
+            )}
+
           </div>
           {user.status && (
             <div className="flex items-center gap-1 mt-0.5">

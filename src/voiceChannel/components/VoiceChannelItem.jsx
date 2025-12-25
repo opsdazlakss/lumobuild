@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useVoiceChannel } from '../context/VoiceChannelContext';
 import { db } from '../../services/firebase';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { useData } from '../../context/DataContext';
 import { FaVolumeUp, FaMicrophone, FaMicrophoneSlash, FaVideo, FaDesktop } from 'react-icons/fa';
 import { VoiceParticipantContextMenu } from './VoiceParticipantContextMenu';
@@ -28,15 +28,70 @@ export const VoiceChannelItem = ({ channel }) => {
     );
 
     const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
-      const data = [];
+      const now = Date.now();
+      const rawData = [];
       snapshot.forEach((doc) => {
-        data.push({ odaId: doc.id, ...doc.data() });
+        rawData.push({ odaId: doc.id, ...doc.data() });
       });
-      setChannelParticipants(data);
+
+      // Passive Ghost Cleanup: Any active user viewing the sidebar can clean up stale entries
+      const active = rawData.filter(participant => {
+        // Current user is always active locally
+        if (participant.odaId === currentUser?.uid) return true;
+
+        // Determine last activity time
+        const lastActivity = participant.lastHeartbeat || participant.joinedAt;
+        const lastActivityTime = lastActivity?.toMillis 
+          ? lastActivity.toMillis() 
+          : (lastActivity || 0);
+        
+        // If we can't determine time, keep it for now (might be newly joined)
+        if (lastActivityTime === 0) return true;
+
+        const timeSinceActivity = now - lastActivityTime;
+        
+        // If no activity for 30 seconds, purge from UI and Firestore
+        if (timeSinceActivity > 30000) {
+          console.log('[VoiceChannel] Passive sidebar cleanup purging ghost:', participant.displayName);
+          const staleRef = doc(db, 'servers', currentServer, 'channels', channel.id, 'voiceParticipants', participant.odaId);
+          deleteDoc(staleRef).catch(() => {});
+          return false;
+        }
+        return true;
+      });
+
+      setChannelParticipants(active);
     });
 
-    return () => unsubscribe();
-  }, [currentServer, channel.id]);
+    // Handle staleness for users already on the server (if no data changes, snapshot won't fire)
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      setChannelParticipants(prev => {
+        return prev.filter(participant => {
+          if (participant.odaId === currentUser?.uid) return true;
+          
+          const lastActivity = participant.lastHeartbeat || participant.joinedAt;
+          const lastActivityTime = lastActivity?.toMillis 
+            ? lastActivity.toMillis() 
+            : (lastActivity || 0);
+          
+          if (lastActivityTime === 0) return true;
+          if (now - lastActivityTime > 30000) {
+             console.log('[VoiceChannel] Periodic sidebar cleanup purging ghost:', participant.displayName);
+             const staleRef = doc(db, 'servers', currentServer, 'channels', channel.id, 'voiceParticipants', participant.odaId);
+             deleteDoc(staleRef).catch(() => {});
+             return false;
+          }
+          return true;
+        });
+      });
+    }, 15000); // Check every 15s locally
+
+    return () => {
+      unsubscribe();
+      clearInterval(intervalId);
+    };
+  }, [currentServer, channel.id, currentUser]);
 
   const handleClick = () => {
     if (!isActive) {

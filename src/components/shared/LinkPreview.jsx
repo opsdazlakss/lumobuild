@@ -69,7 +69,7 @@ const YouTubeEmbed = ({ url }) => {
         <div className="relative pt-[56.25%]">
           <iframe
             className="absolute inset-0 w-full h-full"
-            src={`https://www.youtube.com/embed/${videoId}?autoplay=1`}
+            src={`https://www.youtube.com/embed/${videoId}?autoplay=1&origin=${window.location.origin}`}
             title="YouTube video"
             frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

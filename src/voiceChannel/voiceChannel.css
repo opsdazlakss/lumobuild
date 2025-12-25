@@ -132,99 +132,254 @@
   color: #5865f2;
 }
 
-/* Voice Control Bar - Discord style, in sidebar */
+/* Voice Control Bar - Sleek Command Deck (Slim) */
 .voice-channel-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px;
-  background: var(--bg-secondary-alt, #232428);
-  border-bottom: 1px solid var(--bg-modifier-accent, rgba(79, 84, 92, 0.48));
+  flex-direction: column;
+  gap: 6px; /* Reduced gap */
+  padding: 8px 12px; /* Reduced padding */
+  background: rgba(20, 21, 24, 0.9); /* Darker, sleek background */
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.4);
   margin-left: -72px;
   width: calc(100% + 72px);
   box-sizing: border-box;
   overflow: visible;
+  height: auto;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.3);
+  z-index: 100; /* Ensure the bar and its children stack correctly */
+}
+
+.voice-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 4px;
+  margin-bottom: 2px;
 }
 
 .voice-bar-info {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row; /* Horizontal info to save vertical space */
+  align-items: center;
+  gap: 8px;
   min-width: 0;
   flex-shrink: 1;
-  overflow: hidden;
 }
 
 .voice-bar-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: 14px;
   font-weight: 600;
-  color: #3ba55c;
-  overflow: hidden;
+  color: #fff;
+  letter-spacing: -0.01em;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #3ba55c;
-  flex-shrink: 0;
-  animation: pulse 2s infinite;
+/* Ping Indicator - Cellular style */
+.voice-connection-status {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+  padding-bottom: 2px;
+  cursor: help;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.signal-bar {
+  display: block; /* Ensure block display */
+  width: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.signal-bar.bar-1 { height: 4px; }
+.signal-bar.bar-2 { height: 8px; }
+.signal-bar.bar-3 { height: 12px; }
+
+/* Status Colors */
+.voice-connection-status.good .signal-bar { background: #3ba55c; }
+.voice-connection-status.fair .signal-bar { background: #faa61a; }
+.voice-connection-status.poor .signal-bar { background: #ed4245; }
+.voice-connection-status.unknown .signal-bar { background: rgba(255, 255, 255, 0.2); }
+
+/* Animation for unknown state */
+.voice-connection-status.unknown .signal-bar {
+  animation: signal-pulse 1.5s infinite;
+}
+
+@keyframes signal-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
 }
 
 .voice-bar-channel {
-  font-size: 11px;
-  color: var(--text-muted, #949ba4);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 14px;
+  color: #f2f3f5;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* Ping Stats Mini Panel */
+.ping-stats-panel {
+  position: absolute;
+  bottom: 100%; /* Show above */
+  left: 0;
+  margin-bottom: 8px; /* Space from indicator */
+  background: rgba(0, 0, 0, 0.9);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 2000; /* High z-index to top everything */
+  min-width: 60px;
+  text-align: center;
+  pointer-events: none;
+  animation: fade-in-up 0.2s ease-out;
+}
+
+.ping-stats-panel::before {
+  content: '';
+  position: absolute;
+  bottom: -5px; /* Position at bottom */
+  left: 10px; /* Align with indicator */
+  width: 8px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.9);
+  transform: rotate(45deg);
+  /* Border Bottom and Right makes it point DOWN when rotated */
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ping-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.ping-label {
+  font-size: 10px;
+  color: #b9bbbe;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .voice-bar-controls {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   flex-shrink: 0;
+  width: 100%;
+}
+
+/* Fused Control Groups (Slim) */
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0; 
+  padding: 0;
+  background: rgba(0, 0, 0, 0.4); 
+  border-radius: 8px; 
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  /* overflow: hidden; REMOVED to allow menus to show up */
+}
+
+.control-group.no-bg {
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .voice-control-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: 32px;
   height: 28px;
   border: none;
-  border-radius: 4px;
-  background: var(--bg-modifier-hover, rgba(79, 84, 92, 0.32));
-  color: var(--text-normal, #dbdee1);
+  border-radius: 0; 
+  background: transparent;
+  color: #b9bbbe;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-size: 14px;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  position: relative;
+  border-right: 1px solid rgba(255, 255, 255, 0.05); 
+}
+
+/* Rounded corners for group ends manually since overflow:hidden is gone */
+.control-group > .voice-control-btn:first-child,
+.control-group > .voice-settings-wrapper:first-child > .voice-control-btn {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.control-group > .voice-control-btn:last-child,
+.control-group > .voice-settings-wrapper:last-child > .voice-control-btn {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.voice-control-btn:last-child {
+  border-right: none;
+}
+
+.voice-control-btn.arrow-btn {
+  width: 18px; /* Slim arrow button */
+  padding: 0;
 }
 
 .voice-control-btn:hover {
-  background: var(--bg-modifier-active, rgba(79, 84, 92, 0.48));
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }
 
 .voice-control-btn.active {
-  background: rgba(237, 66, 69, 0.16);
-  color: #ed4245;
+  background: #f2f3f5;
+  color: #111;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
+.voice-control-btn.active svg {
+  transform: scale(1.1); /* Slightly enlarge active icons */
+}
+
+.voice-control-btn.arrow-btn.active {
+  background: rgba(255, 255, 255, 0.15); /* Sleek semi-transparent instead of solid white */
+  color: #fff;
+  box-shadow: none;
+}
+
+/* Special styling for Disconnect button - Compact Pill */
 .voice-control-btn.disconnect {
-  background: #ed4245;
-  color: white;
+  width: auto;
+  min-width: 32px;
+  padding: 0 10px;
+  height: 28px; /* Match other buttons height */
+  border-radius: 14px !important;
+  background: rgba(237, 66, 69, 0.2);
+  color: #ed4245;
+  font-weight: 600;
+  border: 1px solid rgba(237, 66, 69, 0.2);
 }
 
 .voice-control-btn.disconnect:hover {
-  background: #c53b3e;
+  background: #ed4245;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(237, 66, 69, 0.4);
 }
 
 /* Voice Grid Modal */
@@ -523,13 +678,14 @@
 
 .voice-device-menu {
   position: absolute;
-  bottom: calc(100% + 12px);
-  right: -36px; /* İkonlardan sidebar kenarına doğru hizala */
+  bottom: 100%; /* Open Upwards */
+  left: 0; /* Align left with parent wrapper */
+  margin-bottom: 8px;
   background: var(--bg-tertiary, #111214);
   border-radius: 8px;
   padding: 8px;
-  width: 220px;
-  z-index: 1000;
+  min-width: 220px;
+  z-index: 2000; /* Top-tier stacking */
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--bg-modifier-accent, rgba(79, 84, 92, 0.48));
 }

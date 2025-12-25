@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { doc, updateDoc, deleteField, addDoc, collection, serverTimestamp, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { useSwipe } from '../hooks/useSwipe';
+import { useAndroidPermissions } from '../hooks/useAndroidPermissions';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -32,6 +33,9 @@ import '../voiceChannel/voiceChannel.css';
 export const MainApp = () => {
   const { currentUser, userProfile, logout } = useAuth();
   const { users, channels, server, servers, currentServer, setCurrentServer, unreadMentions, unreadDms, dms } = useData();
+  
+  // Request Android permissions on startup (camera, microphone, storage, notifications)
+  useAndroidPermissions();
   
   // Send presence heartbeat every 5 minutes
   usePresence(currentUser?.uid);

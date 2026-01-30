@@ -1,30 +1,72 @@
 const admin = require('firebase-admin');
 
-// Firebase Admin SDK'yı başlat (sadece bir kez)
+// Firebase Admin'i global scope'da başlatmaya çalışalım
 if (!admin.apps.length) {
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-      })
-    });
-    console.log('Firebase Admin initialized successfully');
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY 
+      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+      : undefined;
+
+    if (process.env.FIREBASE_PROJECT_ID && privateKey) {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: privateKey
+        })
+      });
+      console.log('Firebase Admin initialized successfully');
+    }
   } catch (error) {
     console.error('Firebase Admin initialization error:', error);
   }
 }
 
 export default async function handler(req, res) {
-  // CORS headers - güvenlik için sadece kendi domain'inizden izin verin
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Production'da bunu kendi domain'inize değiştirin
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-  // OPTIONS request için
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Debug için Env kontrolü (Private key hariç)
+  if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+    console.error('Missing Environment Variables');
+    console.error('Project ID:', !!process.env.FIREBASE_PROJECT_ID);
+    console.error('Client Email:', !!process.env.FIREBASE_CLIENT_EMAIL);
+    console.error('Private Key:', !!process.env.FIREBASE_PRIVATE_KEY);
+    
+    return res.status(500).json({ 
+      error: 'Configuration Error', 
+      message: 'Server environment variables are missing. check logs.',
+      details: {
+        hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+        hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+        hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY
+      }
+    });
+  }
+
+  // Admin SDK başlatılmamışsa tekrar dene (bazen serverless function cold start'ta gerekebilir)
+  if (!admin.apps.length) {
+    try {
+       admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        })
+      });
+    } catch (e) {
+      return res.status(500).json({
+        error: 'Initialization Error',
+        message: 'Failed to initialize Firebase Admin SDK',
+        details: e.message
+      });
+    }
   }
 
   // Sadece POST isteklerine izin ver

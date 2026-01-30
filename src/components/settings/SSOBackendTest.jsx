@@ -6,7 +6,8 @@ export const SSOBackendTest = ({ currentUser }) => {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const VERCEL_API_URL = 'https://lumobuildvercel.vercel.app/api/sso-token';
+  // Vercel production domain
+  const VERCEL_API_URL = 'https://lumobuild.vercel.app/api/sso-token';
 
   const testBackend = async () => {
     setTesting(true);

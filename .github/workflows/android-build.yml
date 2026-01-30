@@ -61,7 +61,7 @@ jobs:
       - name: Get Debug Keystore SHA-1
         run: |
           echo "=== DEBUG KEYSTORE SHA-1 FINGERPRINT ==="
-          cd android && ./gradlew signingReport 2>/dev/null | grep -A1 "Variant: debug" | grep "SHA1" | head -1
+          cd android && ./gradlew signingReport --quiet | grep "SHA1:" | head -1
           echo "========================================="
           echo "Add this SHA-1 to Firebase Console -> Project Settings -> Your Android App"
 

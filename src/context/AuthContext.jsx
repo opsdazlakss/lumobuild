@@ -6,7 +6,9 @@ import {
   signOut, 
   sendPasswordResetEmail,
   onAuthStateChanged,
-  sendEmailVerification 
+  sendEmailVerification,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
@@ -118,6 +120,30 @@ export const AuthProvider = ({ children }) => {
     return signOut(auth);
   };
 
+  const signInWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    const userCredential = await signInWithPopup(auth, provider);
+    
+    // Check if user profile exists, if not create it
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+    if (!userDoc.exists()) {
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        displayName: userCredential.user.displayName,
+        email: userCredential.user.email,
+        photoURL: userCredential.user.photoURL,
+        role: 'member',
+        createdAt: serverTimestamp(),
+        isOnline: true,
+        lastSeen: serverTimestamp(),
+      });
+    } else {
+      // Update presence for existing user
+      await updatePresence(userCredential.user.uid, true);
+    }
+    
+    return userCredential;
+  };
+
   const resetPassword = (email) => {
     return sendPasswordResetEmail(auth, email);
   };
@@ -134,6 +160,7 @@ export const AuthProvider = ({ children }) => {
     register,
     login,
     logout,
+    signInWithGoogle,
     resetPassword,
     resendVerification,
   };

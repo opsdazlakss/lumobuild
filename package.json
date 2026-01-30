@@ -1,7 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-  "version": "1.9.7",
+  "version": "1.9.8",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -30,6 +30,7 @@
     "electron-updater": "^6.6.2",
     "emoji-picker-react": "^4.16.1",
     "firebase": "^12.6.0",
+    "firebase-admin": "^13.6.0",
     "peerjs": "^1.5.5",
     "react": "^19.2.3",
     "react-color": "^2.19.3",
@@ -96,6 +97,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.22",
+    "baseline-browser-mapping": "^2.9.19",
     "concurrently": "^9.2.1",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",

@@ -94,10 +94,12 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
       {/* Voice Channel Bar - Discord style, above user panel */}
       <VoiceChannelBar />
 
-      {/* User Panel */}
-      <div className="h-20 bg-dark-bg px-2 flex items-center justify-between gap-2 border-t border-dark-hover -ml-[72px] w-[calc(100%+72px)] relative z-10">
+      {/* User Panel - Discord Style */}
+      <div className="px-2 pb-2 -ml-[72px] w-[calc(100%+72px)] relative z-10">
+        <div className="h-[60px] bg-[#1e1f22] px-3 flex items-center gap-2 rounded-lg shadow-lg border border-[#3f4147]">
+          {/* Avatar + Username */}
         <div 
-          className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer hover:bg-dark-hover rounded p-2 transition-colors"
+          className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer hover:bg-dark-hover rounded p-1 transition-colors"
           onClick={() => setShowProfileCard(true)}
         >
           <div className="relative flex-shrink-0">
@@ -106,7 +108,7 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
                 key={userProfile.photoUrl}
                 src={userProfile.photoUrl} 
                 alt={userProfile.displayName}
-                className="w-12 h-12 rounded-full object-cover"
+                className="w-8 h-8 rounded-full object-cover"
                 onError={(e) => {
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'flex';
@@ -115,41 +117,47 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
             ) : null}
             <div 
               key={`fallback-${userProfile?.photoUrl}`}
-              className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white font-bold text-lg"
+              className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center text-white font-semibold text-sm"
               style={{ display: userProfile?.photoUrl ? 'none' : 'flex' }}
             >
               {userProfile?.displayName?.[0]?.toUpperCase() || 'U'}
             </div>
             {/* Status Indicator on Avatar */}
-            <div className="absolute bottom-0 right-0">
-              <StatusIndicator status={userProfile?.presence || 'online'} size="md" />
+            <div className="absolute -bottom-0.5 -right-0.5">
+              <StatusIndicator status={userProfile?.presence || 'online'} size="sm" />
             </div>
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-base font-semibold text-dark-text truncate">
+            <div className="text-sm font-medium text-dark-text truncate leading-tight">
               {userProfile?.displayName || 'User'}
             </div>
-            <div className="text-sm text-dark-muted truncate">
-              {userProfile?.role || 'member'}
+            <div className="text-[11px] text-dark-muted truncate leading-tight">
+              {userProfile?.presence === 'online' ? 'Online' : 
+               userProfile?.presence === 'idle' ? 'Idle' :
+               userProfile?.presence === 'dnd' ? 'Do Not Disturb' : 
+               userProfile?.presence === 'offline' ? 'Invisible' : 'Online'}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        
+        {/* Action Buttons */}
+        <div className="flex items-center">
           <button
             onClick={onOpenSettings}
-            className="p-2.5 hover:bg-dark-hover rounded-lg transition-colors"
-            title="Settings"
+            className="p-2 hover:bg-dark-hover rounded transition-colors"
+            title="User Settings"
           >
-            <MdSettings className="text-dark-muted hover:text-dark-text" size={24} />
+            <MdSettings className="text-dark-muted hover:text-dark-text" size={20} />
           </button>
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className="p-2.5 hover:bg-dark-hover rounded-lg transition-colors"
+            className="p-2 hover:bg-dark-hover rounded transition-colors"
             title="Logout"
           >
-            <MdLogout className="text-dark-muted hover:text-admin" size={24} />
+            <MdLogout className="text-dark-muted hover:text-red-400" size={20} />
           </button>
         </div>
+      </div>
       </div>
 
       <UserProfileCard

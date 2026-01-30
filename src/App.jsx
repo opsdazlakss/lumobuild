@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
+import { SSOTestPage } from './pages/SSOTestPage';
 import { MainApp } from './pages/MainApp';
 
 function AuthRouter() {
@@ -55,6 +56,7 @@ function AuthRouter() {
         <LoginPage
           onSwitchToRegister={() => setAuthView('register')}
           onSwitchToReset={() => setAuthView('reset')}
+          onSwitchToSSOTest={() => setAuthView('sso-test')}
         />
       )}
       {authView === 'register' && (
@@ -62,6 +64,9 @@ function AuthRouter() {
       )}
       {authView === 'reset' && (
         <ResetPasswordPage onSwitchToLogin={() => setAuthView('login')} />
+      )}
+      {authView === 'sso-test' && (
+        <SSOTestPage onBack={() => setAuthView('login')} />
       )}
     </>
   );

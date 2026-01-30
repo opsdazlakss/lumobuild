@@ -204,6 +204,12 @@ export const VoiceChannelProvider = ({ children }) => {
 
   // Enumerate devices
   const refreshDevices = useCallback(async () => {
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices) {
+      console.log('[VoiceChannel] mediaDevices API not available - skipping device enumeration');
+      return;
+    }
+
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(d => d.kind === 'audioinput');
@@ -225,11 +231,19 @@ export const VoiceChannelProvider = ({ children }) => {
   }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
   useEffect(() => {
+    // Check if mediaDevices API is available
+    if (!navigator.mediaDevices) {
+      console.log('[VoiceChannel] mediaDevices API not available - skipping device enumeration');
+      return;
+    }
+
     refreshDevices();
     // Listen for device changes
     navigator.mediaDevices.ondevicechange = refreshDevices;
     return () => {
-      navigator.mediaDevices.ondevicechange = null;
+      if (navigator.mediaDevices) {
+        navigator.mediaDevices.ondevicechange = null;
+      }
     };
   }, [refreshDevices]);
 
@@ -839,18 +853,28 @@ export const VoiceChannelProvider = ({ children }) => {
   }, [currentVoiceChannel, currentUser, connectedServerId, isMuted, vadEnabled]);
 
   // Toggle deafen
+  // Toggle deafen
   const toggleDeafen = useCallback(() => {
     setIsDeafened(prev => {
-      const newValue = !prev;
-      // Mute all remote audio
+      const isNowDeafened = !prev;
+      
+      // If we are deafening, mute if not muted
+      if (isNowDeafened) {
+          if (!isMuted) toggleMute();
+      } else {
+          // If undeafening, user wants mic to open too
+          if (isMuted) toggleMute();
+      }
+
+      // Mute all remote audio tracks
       remoteStreams.forEach((stream) => {
         stream.getAudioTracks().forEach(track => {
-          track.enabled = !newValue;
+          track.enabled = !isNowDeafened;
         });
       });
-      return newValue;
+      return isNowDeafened;
     });
-  }, [remoteStreams]);
+  }, [remoteStreams, isMuted, toggleMute]);
 
   // Toggle video
   const toggleVideo = useCallback(async () => {

@@ -12,13 +12,19 @@ import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 
 import { MdPerson, MdSecurity, MdCircle, MdClose, MdInfo, MdUpload, MdImage, MdRocketLaunch, MdPalette } from 'react-icons/md';
 import { PremiumSettings } from '../components/settings/PremiumSettings';
 import { isPremiumUser } from '../utils/permissions';
+import { useHotkeys } from '../context/HotkeyContext';
+import { KeybindRecorder } from '../components/settings/KeybindRecorder';
+import { SSOBackendTest } from '../components/settings/SSOBackendTest';
+import { MdKeyboard } from 'react-icons/md';
 
 // Settings categories
 const SETTINGS_TABS = [
   { id: 'premium', label: 'Premium', icon: MdRocketLaunch, category: 'User Settings' },
   { id: 'account', label: 'My Account', icon: MdPerson, category: 'User Settings' },
+  { id: 'keybinds', label: 'Keybinds', icon: MdKeyboard, category: 'App Settings' },
   { id: 'security', label: 'Privacy & Security', icon: MdSecurity, category: 'User Settings' },
   { id: 'about', label: 'About', icon: MdInfo, category: 'App Settings' },
+  { id: 'debug', label: '🧪 Debug', icon: MdInfo, category: 'Developer' },
 ];
 
 export const SettingsModal = ({ isOpen, onClose }) => {
@@ -47,6 +53,8 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     confirmPassword: '',
   });
   const [changingPassword, setChangingPassword] = useState(false);
+
+  const { hotkeys, updateHotkey, resetToDefaults } = useHotkeys();
 
   // Use centralized premium check
   const isPremium = isPremiumUser(userProfile);
@@ -609,6 +617,38 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 </div>
               </div>
             </div>
+            </div>
+        );
+
+      case 'keybinds':
+        return (
+          <div className="space-y-8">
+             <div className="flex items-center justify-between">
+                 <h1 className="text-2xl font-bold text-dark-text">Keybinds</h1>
+                 <Button variant="secondary" size="sm" onClick={resetToDefaults}>
+                     Reset Defaults
+                 </Button>
+             </div>
+             
+             <div className="bg-dark-bg rounded-lg p-4 space-y-4">
+                 <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-2">Voice & Video</h3>
+                 
+                 <KeybindRecorder 
+                    label="Toggle Mute" 
+                    currentValue={hotkeys.toggleMute}
+                    onChange={(val) => updateHotkey('toggleMute', val)}
+                 />
+                 
+                 <KeybindRecorder 
+                    label="Toggle Deafen" 
+                    currentValue={hotkeys.toggleDeafen}
+                    onChange={(val) => updateHotkey('toggleDeafen', val)}
+                 />
+
+                 <p className="text-xs text-dark-muted mt-4">
+                     Keybinds are active while the application window is focused.
+                 </p>
+             </div>
           </div>
         );
 
@@ -736,6 +776,20 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                      </div>
                   </div>
               </div>
+            </div>
+          </div>
+        );
+
+      case 'debug':
+        return (
+          <div className="space-y-8">
+            <h1 className="text-2xl font-bold text-dark-text">🧪 Debug Tools</h1>
+            
+            {/* SSO Backend Test */}
+            <div className="bg-dark-bg rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-dark-text mb-4">SSO Backend Test</h3>
+              
+              <SSOBackendTest currentUser={currentUser} />
             </div>
           </div>
         );

@@ -37,6 +37,7 @@ export const CallProvider = ({ children }) => {
 
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [isDeafened, setIsDeafened] = useState(false);
   
   // Device selection state
   const [availableDevices, setAvailableDevices] = useState({ audioInputs: [], videoInputs: [], audioOutputs: [] });
@@ -44,6 +45,9 @@ export const CallProvider = ({ children }) => {
   const [selectedCameraId, setSelectedCameraId] = useState('');
 
   const playSound = (soundId) => {
+    // If deafened, don't play locally (but maybe still send? behave like Discord: user won't hear, others will)
+    if (isDeafened) return;
+
     const sound = customSounds.find(s => s.id === soundId);
     if (!sound) return;
 
@@ -106,9 +110,11 @@ export const CallProvider = ({ children }) => {
     stopRing(); // Double safety
 
     if (callStatus === 'incoming') {
-        stopRingRef.current = playIncomingRing();
+        // Don't play ring if deafened? Actually Discord still plays rings usually.
+        // But let's respect "Global Mute" idea. 
+        if (!isDeafened) stopRingRef.current = playIncomingRing();
     } else if (callStatus === 'outgoing') {
-        stopRingRef.current = playOutgoingRing();
+         if (!isDeafened) stopRingRef.current = playOutgoingRing();
     }
     
     return () => {
@@ -192,6 +198,8 @@ export const CallProvider = ({ children }) => {
 
         conn.on('data', (data) => {
             if (data && data.type === 'SOUND_EFFECT' && data.payload?.src) {
+                if (isDeafened) return; // Don't play if deafened
+
                 console.log("Received sound effect:", data.payload.name);
                 const audio = new Audio(data.payload.src);
                 audio.volume = 0.5;
@@ -589,6 +597,8 @@ export const CallProvider = ({ children }) => {
         conn.on('data', (data) => {
              // Handle if Caller sends data back
              if (data && data.type === 'SOUND_EFFECT' && data.payload?.src) {
+                if (isDeafened) return; // Don't play if deafened
+                
                 const audio = new Audio(data.payload.src);
                 audio.volume = 0.5;
                 
@@ -663,6 +673,7 @@ export const CallProvider = ({ children }) => {
     setOutgoingCallUser(null);
     setIsMuted(false);
     setIsVideoOff(false);
+    setIsDeafened(false);
     
     // 5. Clean up data connection
     if (dataConnection) {
@@ -717,6 +728,44 @@ export const CallProvider = ({ children }) => {
         }
     }
   };
+
+  const toggleDeafen = () => {
+     const newState = !isDeafened;
+     setIsDeafened(newState);
+
+     // 1. Mute/Unmute Incoming Audio (Remote Stream)
+     if (remoteStream) {
+         remoteStream.getAudioTracks().forEach(track => {
+             track.enabled = !newState;
+         });
+     }
+
+     // 2. Mute/Unmute Microphone (Self) - Standard behavior
+     // If we deafen, we usually also mute ourselves so we don't accidentally broadcast while not hearing
+     if (newState) {
+         // Enable Mute if not already muted
+         if (!isMuted) toggleAudio();
+     } else {
+         // If undeafening, do we unmute? Discord stays muted if manually muted.
+         // But for simplicity, let's leave microphone state as is, OR forcefully unmute?
+         // Let's stick to: Deafen -> Mutes Mic. Undeafen -> Keeps Mic Muted (user must manually unmute) or Restores?
+         // Discord: Deafen -> Mutes Mic. Undeafen -> Unmutes Mic only if it was not manually muted?
+         // Simplest implementation: Deafen -> Mutes Mic. Undeafen -> Does nothing to Mic (Mic stays muted).
+         // Actually, let's make Deafen Toggle purely affect Incoming for now, AND trigger toggleAudio if needed.
+         if (!isMuted) {
+             toggleAudio(); // Mute self
+         }
+     }
+  };
+
+  // Effect to sync remote stream audio track state if remoteStream changes while deafened
+  useEffect(() => {
+      if (remoteStream) {
+          remoteStream.getAudioTracks().forEach(track => {
+              track.enabled = !isDeafened;
+          });
+      }
+  }, [remoteStream, isDeafened]);
 
   const screenStreamRef = useRef(null);
   const cameraStreamRef = useRef(null); // To store camera stream when screen sharing
@@ -1005,6 +1054,8 @@ export const CallProvider = ({ children }) => {
     setSelectedCameraId,
     playSound,
     customSounds,
+    isDeafened,
+    toggleDeafen,
     addSound,
     removeSound
   };

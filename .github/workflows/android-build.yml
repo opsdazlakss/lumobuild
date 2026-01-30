@@ -52,18 +52,18 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Show Debug Keystore SHA-1
-        run: |
-          echo "=== DEBUG KEYSTORE SHA-1 FINGERPRINT ==="
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android 2>/dev/null | grep SHA1
-          echo "========================================="
-          echo "Add this SHA-1 to Firebase Console -> Project Settings -> Your Android App"
-
       - name: Build APK (Debug)
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+
+      - name: Get Debug Keystore SHA-1
+        run: |
+          echo "=== DEBUG KEYSTORE SHA-1 FINGERPRINT ==="
+          cd android && ./gradlew signingReport 2>/dev/null | grep -A1 "Variant: debug" | grep "SHA1" | head -1
+          echo "========================================="
+          echo "Add this SHA-1 to Firebase Console -> Project Settings -> Your Android App"
 
       - name: Rename APK
         run: |

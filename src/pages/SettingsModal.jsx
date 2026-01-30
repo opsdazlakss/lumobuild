@@ -302,8 +302,14 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  // Group tabs by category
-  const groupedTabs = SETTINGS_TABS.reduce((acc, tab) => {
+  // Group tabs by category (filter Debug for non-admins)
+  const isAdmin = userProfile?.role === 'admin';
+  const availableTabs = SETTINGS_TABS.filter(tab => {
+    if (tab.id === 'debug') return isAdmin;
+    return true;
+  });
+  
+  const groupedTabs = availableTabs.reduce((acc, tab) => {
     if (!acc[tab.category]) acc[tab.category] = [];
     acc[tab.category].push(tab);
     return acc;

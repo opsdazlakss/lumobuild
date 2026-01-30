@@ -143,18 +143,6 @@ export const LoginPage = ({ onSwitchToRegister, onSwitchToReset, onSwitchToSSOTe
               Register
             </button>
           </div>
-          
-          {/* SSO Test Link */}
-          {onSwitchToSSOTest && (
-            <div className="mt-3">
-              <button
-                onClick={onSwitchToSSOTest}
-                className="text-xs text-dark-muted hover:text-brand-primary transition-colors"
-              >
-                🧪 Test SSO Backend
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

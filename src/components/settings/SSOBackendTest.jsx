@@ -48,6 +48,7 @@ export const SSOBackendTest = ({ currentUser }) => {
           success: true,
           customToken: data.customToken,
           user: data.user,
+          googleIdToken: googleIdToken, // MeydanApp test için
         });
       } else {
         throw new Error(data.message || data.error || 'Unknown error');
@@ -100,6 +101,25 @@ export const SSOBackendTest = ({ currentUser }) => {
               <pre className="bg-dark-sidebar p-3 rounded text-xs text-dark-text overflow-x-auto break-all">
                 {result.customToken.substring(0, 100)}...
               </pre>
+            </div>
+            
+            {/* Google ID Token for SSO Testing */}
+            <div className="mt-4 pt-4 border-t border-green-500/30">
+              <p className="text-dark-muted mb-2">🧪 SSO Test URL (for MeydanApp testing):</p>
+              <div className="bg-dark-sidebar p-3 rounded text-xs">
+                <p className="text-dark-text font-mono break-all mb-2">
+                  {`${window.location.origin}/?sso_token=${result.googleIdToken}`}
+                </p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/?sso_token=${result.googleIdToken}`);
+                    alert('SSO URL copied to clipboard!');
+                  }}
+                  className="text-green-500 hover:text-green-400 text-xs underline"
+                >
+                  📋 Copy URL
+                </button>
+              </div>
             </div>
           </div>
         </div>

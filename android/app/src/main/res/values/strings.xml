@@ -4,4 +4,5 @@
     <string name="title_activity_main">Lumo</string>
     <string name="package_name">com.hasan.lumoapp</string>
     <string name="custom_url_scheme">com.hasan.lumoapp</string>
+    <string name="server_client_id">267697346186-ortie4deqdkbqvrj4q6an18gv8idtnbj.apps.googleusercontent.com</string>
 </resources>

@@ -8,8 +8,11 @@ import {
   onAuthStateChanged,
   sendEmailVerification,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithCredential
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext({});
@@ -121,8 +124,18 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    const userCredential = await signInWithPopup(auth, provider);
+    let userCredential;
+    
+    if (Capacitor.isNativePlatform()) {
+      // Native mobile: use Capacitor GoogleAuth plugin
+      const googleUser = await GoogleAuth.signIn();
+      const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
+      userCredential = await signInWithCredential(auth, credential);
+    } else {
+      // Web: use Firebase popup
+      const provider = new GoogleAuthProvider();
+      userCredential = await signInWithPopup(auth, provider);
+    }
     
     // Check if user profile exists, if not create it
     const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));

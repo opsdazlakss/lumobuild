@@ -145,32 +145,26 @@ function createMainWindow() {
   });
 
   // --- GOOGLE LOGIN FIX ---
-  // Spoof User Agent to look like Chrome (remove Electron signature)
-  const userAgent = mainWindow.webContents.getUserAgent();
-  const cleanUserAgent = userAgent.replace(/Electron\/[0-9\.]+\s/, '').replace(/Lumo\/[0-9\.]+\s/, '');
-  mainWindow.webContents.setUserAgent(cleanUserAgent);
+  // Ensure the main window uses the clean UA
+  mainWindow.webContents.setUserAgent(FLOATING_UA);
 
-  // Allow popups (required for Firebase signInWithPopup)
+  // Allow popups (required for Firebase signInWithPopup) and force clean UA
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     return { 
       action: 'allow', 
       overrideBrowserWindowOptions: { 
         autoHideMenuBar: true,
-        userAgent: cleanUserAgent // Ensure popup also uses clean UA
+        userAgent: FLOATING_UA // Explicitly set clean UA for the popup
       } 
     };
   });
   
-  // Ensure headers also reflect this for requests to Google
+  // Clean up any remaining headers just in case
   const session = mainWindow.webContents.session;
   session.webRequest.onBeforeSendHeaders(
     { urls: ['*://accounts.google.com/*', '*://www.googleapis.com/*'] },
     (details, callback) => {
-      if (details.requestHeaders['User-Agent']) {
-        details.requestHeaders['User-Agent'] = details.requestHeaders['User-Agent']
-          .replace(/Electron\/[0-9\.]+\s/, '')
-          .replace(/Lumo\/[0-9\.]+\s/, '');
-      }
+      details.requestHeaders['User-Agent'] = FLOATING_UA;
       callback({ requestHeaders: details.requestHeaders });
     }
   );
@@ -295,6 +289,14 @@ app.whenReady().then(() => {
       isQuitting = true;
   });
 });
+
+// --- GOOGLE LOGIN FIX ---
+// Hardcode a modern Chrome User Agent to fully look like a standard browser.
+// This is more reliable than replacing strings.
+const FLOATING_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+// Set fallback globally for all requests/windows created by this app
+app.userAgentFallback = FLOATING_UA;
 
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {

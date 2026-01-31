@@ -94,27 +94,73 @@ export default async function handler(req, res) {
     const decodedToken = await admin.auth().verifyIdToken(googleIdToken);
     
     console.log('Token verified. Google UID:', decodedToken.uid);
+    console.log('Incoming email param:', email);
 
     let lumoUid = decodedToken.uid;
     const userEmail = decodedToken.email || email;
+    let userRecord = null;
 
-    // ÖNEMLİ: E-posta adresiyle mevcut bir kullanıcı var mı kontrol et.
-    // Eğer varsa, o kullanıcının UID'sini kullan. Böylece yeni kullanıcı açmaz, mevcut hesaba bağlar.
+    // 1. Try to find existing user by email
     if (userEmail) {
       try {
         const existingUser = await admin.auth().getUserByEmail(userEmail);
         console.log('Existing user found by email. Linking to UID:', existingUser.uid);
         lumoUid = existingUser.uid;
+        userRecord = existingUser;
       } catch (err) {
         if (err.code !== 'auth/user-not-found') {
              console.error('Error checking existing user:', err);
+        } else {
+             console.log('No user found by email:', userEmail);
         }
-        // Kullanıcı yoksa Google UID'sini kullanmaya devam et
-        console.log('No existing user found with this email. Creating/Using Google UID.');
       }
     }
+
+    // 2. Ensure User Exists & Update Profile
+    // Define profile data to sync
+    const profileUpdate = {
+        displayName: decodedToken.name,
+        photoURL: decodedToken.picture,
+        emailVerified: true // Trust Google
+    };
     
-    // Custom token oluştur - bulduğumuz (veya varolan) UID ile
+    if (userEmail) {
+        profileUpdate.email = userEmail;
+    }
+
+    try {
+        if (!userRecord) {
+            // Check if user exists by UID (if we didn't find by email)
+            try {
+                userRecord = await admin.auth().getUser(lumoUid);
+                console.log('User found by UID:', lumoUid);
+            } catch (e) {
+                if (e.code === 'auth/user-not-found') {
+                    // Create new user
+                    console.log('Creating new user with UID:', lumoUid);
+                    userRecord = await admin.auth().createUser({
+                        uid: lumoUid,
+                        ...profileUpdate
+                    });
+                } else {
+                    throw e;
+                }
+            }
+        }
+
+        // Update existing user profile to ensure they have a name
+        if (userRecord) {
+            console.log('Updating user profile for UID:', lumoUid);
+            await admin.auth().updateUser(lumoUid, profileUpdate);
+        }
+
+    } catch (err) {
+        console.error('Error creating/updating user in Auth:', err);
+        // Fallback: If update fails, we still try to issue token, 
+        // but this shouldn't happen usually.
+    }
+    
+    // 3. Create Custom Token
     const customToken = await admin.auth().createCustomToken(lumoUid, {
       email: userEmail,
       name: decodedToken.name,
@@ -129,8 +175,8 @@ export default async function handler(req, res) {
       success: true,
       customToken,
       user: {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
+        uid: lumoUid,
+        email: userEmail,
         name: decodedToken.name
       }
     });

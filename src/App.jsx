@@ -56,13 +56,9 @@ function AuthRouter() {
   }
 
   // Force Username Setup
-  // Check if isUsernameSet is falsy (undefined, null, false). 
-  // This ensures even old users (without the field) are forced to update/verify their name.
-  if (currentUser && userProfile) {
-     console.log('[AuthRouter] Checking Username Setup:', { isUsernameSet: userProfile.isUsernameSet, displayName: userProfile.displayName });
-  }
-
-  if (currentUser && userProfile && !userProfile.isUsernameSet) {
+  // Only redirect if isUsernameSet is explicitly FALSE. 
+  // If it's undefined (existing users), we let them through.
+  if (currentUser && userProfile && userProfile.isUsernameSet === false) {
       console.log('[AuthRouter] Redirecting to UsernameSetupScreen');
       return <UsernameSetupScreen />;
   }

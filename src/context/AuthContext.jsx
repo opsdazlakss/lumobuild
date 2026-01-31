@@ -107,7 +107,19 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    await updatePresence(userCredential.user.uid, true);
+    
+    // Migration check for email users
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+    const updates = {
+      isOnline: true,
+      lastSeen: serverTimestamp()
+    };
+
+    if (userDoc.exists() && userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
+      updates.isUsernameSet = true;
+    }
+
+    await setDoc(doc(db, 'users', userCredential.user.uid), updates, { merge: true });
     return userCredential;
   };
 
@@ -158,7 +170,17 @@ export const AuthProvider = ({ children }) => {
         });
       } else {
         // Update presence for existing user
-        await updatePresence(userCredential.user.uid, true);
+        const updates = {
+           isOnline: true,
+           lastSeen: serverTimestamp()
+        };
+
+        // Migration: If user exists and has a displayName but is missing isUsernameSet, mark it true
+        if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
+          updates.isUsernameSet = true;
+        }
+
+        await setDoc(doc(db, 'users', userCredential.user.uid), updates, { merge: true });
       }
       
       return userCredential;

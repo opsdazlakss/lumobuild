@@ -69,10 +69,17 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
           });
       } else {
           // Update existing user presence
-          await setDoc(userDocRef, {
+          const updates = {
               isOnline: true,
               lastSeen: serverTimestamp()
-          }, { merge: true });
+          };
+          
+          // Migration: If user exists and has a displayName but is missing isUsernameSet, mark it true
+          if (userDocSnap.data().isUsernameSet === undefined && userDocSnap.data().displayName) {
+              updates.isUsernameSet = true;
+          }
+
+          await setDoc(userDocRef, updates, { merge: true });
       }
       // -------------------------------------------------------
       

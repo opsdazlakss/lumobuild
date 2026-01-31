@@ -1,70 +1,31 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { signInWithCustomToken } from 'firebase/auth';
-import { auth } from '../services/firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 export const SSOLoginPage = ({ onBackToLogin }) => {
   const { currentUser } = useAuth();
-  const [status, setStatus] = useState('processing'); // processing, success, error
-  const [error, setError] = useState(null);
+  // ... existing state ...
 
-  useEffect(() => {
-    // URL'den token'ı al
-    // sso_token = MeydanApp'ten gelen Google ID token
-    // sso = Direkt custom token (eski yöntem)
-    const urlParams = new URLSearchParams(window.location.search);
-    const googleIdToken = urlParams.get('sso_token');
-    const customToken = urlParams.get('sso') || urlParams.get('token');
-    
-    const tokenToUse = googleIdToken || customToken;
-
-    if (!tokenToUse) {
-      setStatus('error');
-      setError('No token provided in URL');
-      return;
-    }
-
-    // Eğer zaten giriş yapmışsa, başarılı olarak işaretle
-    // (sayfa yenilendiğinde AuthRouter otomatik olarak MainApp'e yönlendirir)
-    if (currentUser) {
-      setStatus('success');
-      setTimeout(() => window.location.reload(), 1000);
-      return;
-    }
-
-    // Custom token ile giriş yap
-    handleSSOLogin(tokenToUse);
-  }, [currentUser]);
+  // ... existing useEffect ...
 
   const handleSSOLogin = async (tokenParam) => {
     try {
       setStatus('processing');
       
-      // Token tipi kontrolü: Custom token mı Google ID token mı?
       const urlParams = new URLSearchParams(window.location.search);
-      const isGoogleToken = urlParams.get('sso_token'); // MeydanApp'ten gelen Google ID token
+      const isGoogleToken = urlParams.get('sso_token'); 
       
       let customToken = tokenParam;
       
-      // Eğer Google ID token ise, önce backend'den custom token al
       if (isGoogleToken) {
         console.log('🔍 Exchanging Google ID token for custom token...');
-        
         const response = await fetch('https://lumobuild.vercel.app/api/sso-token', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            googleIdToken: tokenParam,
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ googleIdToken: tokenParam })
         });
 
         const data = await response.json();
-
-        if (!data.success) {
-          throw new Error(data.message || 'Failed to exchange token');
-        }
+        if (!data.success) throw new Error(data.message || 'Failed to exchange token');
 
         customToken = data.customToken;
         console.log('✅ Custom token received from backend');
@@ -72,19 +33,42 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
       
       console.log('🔐 Logging in with custom token...');
       
-      // Firebase custom token ile giriş
       const userCredential = await signInWithCustomToken(auth, customToken);
-      
       console.log('✅ SSO Login successful:', userCredential.user.email);
+
+      // --- NEW: Create User Profile in Firestore if missing ---
+      const userDocRef = doc(db, 'users', userCredential.user.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (!userDocSnap.exists()) {
+          console.log('Creating new user profile for SSO user...');
+          await setDoc(userDocRef, {
+              displayName: userCredential.user.displayName || 'User', // Fallback
+              email: userCredential.user.email || null,
+              photoURL: userCredential.user.photoURL || null,
+              role: 'member',
+              createdAt: serverTimestamp(),
+              isOnline: true,
+              lastSeen: serverTimestamp(),
+              isUsernameSet: false // Force username setup!
+          });
+      } else {
+          // Update existing user presence
+          await setDoc(userDocRef, {
+              isOnline: true,
+              lastSeen: serverTimestamp()
+          }, { merge: true });
+      }
+      // -------------------------------------------------------
       
       setStatus('success');
       
-      // Sayfa yenilendiğinde AuthRouter otomatik olarak MainApp'e yönlendirecek
       setTimeout(() => {
         window.location.reload();
       }, 1500);
       
     } catch (err) {
+      // ... existing error handling ...
       console.error('❌ SSO Login failed:', err);
       setStatus('error');
       

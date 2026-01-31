@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 import { ToastProvider } from './context/ToastContext';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { usePushNotifications } from './hooks/usePushNotifications';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
@@ -106,9 +108,6 @@ function AuthRouter() {
   );
 }
 
-import { useEffect } from 'react';
-import { ErrorBoundary } from './components/shared/ErrorBoundary';
-import { usePushNotifications } from './hooks/usePushNotifications';
 
 function App() {
   return (

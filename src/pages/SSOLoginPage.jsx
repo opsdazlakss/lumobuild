@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { signInWithCustomToken } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
@@ -9,7 +8,6 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
   const { currentUser } = useAuth();
   const [status, setStatus] = useState('idle'); // idle, processing, success, error
   const [error, setError] = useState('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     // Get token from URL
@@ -20,7 +18,7 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
       handleSSOLogin(ssoToken);
     } else {
       // If no token, redirect to normal login
-      navigate('/login');
+      if (onBackToLogin) onBackToLogin();
     }
   }, []);
 
@@ -135,7 +133,7 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
               </h2>
               <p className="text-dark-text mb-4">{error}</p>
               <button
-                onClick={() => navigate('/login')}
+                onClick={onBackToLogin}
                 className="bg-brand-primary hover:bg-brand-primary/80 text-white font-medium py-2 px-6 rounded-md transition-colors"
               >
                 Go to Login

@@ -139,9 +139,42 @@ function createMainWindow() {
     if (splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.close();
     }
-    mainWindow.maximize(); // Start maximized
+    // mainWindow.minimize(); // Start minimized usually? No, show it.
+    mainWindow.maximize(); 
     mainWindow.show();
   });
+
+  // --- GOOGLE LOGIN FIX ---
+  // Spoof User Agent to look like Chrome (remove Electron signature)
+  const userAgent = mainWindow.webContents.getUserAgent();
+  const cleanUserAgent = userAgent.replace(/Electron\/[0-9\.]+\s/, '').replace(/Lumo\/[0-9\.]+\s/, '');
+  mainWindow.webContents.setUserAgent(cleanUserAgent);
+
+  // Allow popups (required for Firebase signInWithPopup)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    return { 
+      action: 'allow', 
+      overrideBrowserWindowOptions: { 
+        autoHideMenuBar: true,
+        userAgent: cleanUserAgent // Ensure popup also uses clean UA
+      } 
+    };
+  });
+  
+  // Ensure headers also reflect this for requests to Google
+  const session = mainWindow.webContents.session;
+  session.webRequest.onBeforeSendHeaders(
+    { urls: ['*://accounts.google.com/*', '*://www.googleapis.com/*'] },
+    (details, callback) => {
+      if (details.requestHeaders['User-Agent']) {
+        details.requestHeaders['User-Agent'] = details.requestHeaders['User-Agent']
+          .replace(/Electron\/[0-9\.]+\s/, '')
+          .replace(/Lumo\/[0-9\.]+\s/, '');
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+  // ------------------------
 }
 // Configure logging
 log.transports.file.level = 'info';

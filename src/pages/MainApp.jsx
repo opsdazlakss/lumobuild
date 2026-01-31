@@ -340,7 +340,7 @@ export const MainApp = () => {
     }
   };
 
-  if (currentUser && !currentUser.emailVerified) {
+  if (currentUser && currentUser.email && !currentUser.emailVerified) {
       return <VerifyEmailScreen />;
   }
 

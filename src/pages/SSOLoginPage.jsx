@@ -27,7 +27,28 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
       setStatus('processing');
       
       const urlParams = new URLSearchParams(window.location.search);
-      const isGoogleToken = urlParams.get('sso_token'); 
+      // Check if explicitly passed as sso_token OR if the 'sso' token looks like a Google ID Token
+      const ssoParamVal = urlParams.get('sso_token') || urlParams.get('sso');
+      let isGoogleToken = !!urlParams.get('sso_token');
+
+      // Auto-detect Google Token from payload if not explicitly marked
+      if (!isGoogleToken && ssoParamVal) {
+          try {
+              // Simple JWT decode check
+              const parts = ssoParamVal.split('.');
+              if (parts.length === 3) {
+                  const payload = JSON.parse(atob(parts[1]));
+                  // Google tokens usually have 'iss' containing google.com
+                  if (payload.iss && (payload.iss.includes('google.com') || payload.iss.includes('accounts.google'))) {
+                      console.log('Detected Google ID Token in sso param');
+                      isGoogleToken = true;
+                  }
+              }
+          } catch (e) {
+              // Not a standard JWT or failed to parse, assume Custom Token
+              console.log('Token check failed, assuming Custom Token', e);
+          }
+      } 
       
       let customToken = tokenParam;
       

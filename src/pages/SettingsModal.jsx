@@ -14,7 +14,7 @@ import { PremiumSettings } from '../components/settings/PremiumSettings';
 import { isPremiumUser } from '../utils/permissions';
 import { useHotkeys } from '../context/HotkeyContext';
 import { KeybindRecorder } from '../components/settings/KeybindRecorder';
-import { SSOBackendTest } from '../components/settings/SSOBackendTest';
+
 import { MdKeyboard } from 'react-icons/md';
 
 // Settings categories
@@ -990,12 +990,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
           <div className="space-y-8">
             <h1 className="text-2xl font-bold text-dark-text">🧪 Debug Tools</h1>
             
-            {/* SSO Backend Test */}
-            <div className="bg-dark-bg rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-dark-text mb-4">SSO Backend Test</h3>
-              
-              <SSOBackendTest currentUser={currentUser} />
-            </div>
+
           </div>
         );
 

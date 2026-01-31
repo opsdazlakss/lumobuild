@@ -99,6 +99,7 @@ export const AuthProvider = ({ children }) => {
       createdAt: serverTimestamp(),
       isOnline: true,
       lastSeen: serverTimestamp(),
+      isUsernameSet: true
     });
 
     return userCredential;
@@ -126,45 +127,72 @@ export const AuthProvider = ({ children }) => {
   const signInWithGoogle = async () => {
     let userCredential;
     
-    if (Capacitor.isNativePlatform()) {
-      // Native mobile: use Capacitor GoogleAuth plugin
-      const googleUser = await GoogleAuth.signIn();
-      const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
-      userCredential = await signInWithCredential(auth, credential);
-    } else {
-      // Web: use Firebase popup
-      const provider = new GoogleAuthProvider();
-      userCredential = await signInWithPopup(auth, provider);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // Native mobile: use Capacitor GoogleAuth plugin
+        console.log('[GoogleAuth] Starting native sign-in...');
+        const googleUser = await GoogleAuth.signIn();
+        console.log('[GoogleAuth] Got Google user:', JSON.stringify(googleUser, null, 2));
+        const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
+        console.log('[GoogleAuth] Created Firebase credential, signing in...');
+        userCredential = await signInWithCredential(auth, credential);
+        console.log('[GoogleAuth] Firebase sign-in successful!');
+      } else {
+        // Web: use Firebase popup
+        const provider = new GoogleAuthProvider();
+        userCredential = await signInWithPopup(auth, provider);
+      }
+      
+      // Check if user profile exists, if not create it
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      if (!userDoc.exists()) {
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          displayName: userCredential.user.displayName,
+          email: userCredential.user.email,
+          photoURL: userCredential.user.photoURL,
+          role: 'member',
+          createdAt: serverTimestamp(),
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          isUsernameSet: false
+        });
+      } else {
+        // Update presence for existing user
+        await updatePresence(userCredential.user.uid, true);
+      }
+      
+      return userCredential;
+    } catch (error) {
+      console.error('[GoogleAuth] ERROR:', error);
+      console.error('[GoogleAuth] Error code:', error.code);
+      console.error('[GoogleAuth] Error message:', error.message);
+      console.error('[GoogleAuth] Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      throw error;
     }
-    
-    // Check if user profile exists, if not create it
-    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-    if (!userDoc.exists()) {
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
-        displayName: userCredential.user.displayName,
-        email: userCredential.user.email,
-        photoURL: userCredential.user.photoURL,
-        role: 'member',
-        createdAt: serverTimestamp(),
-        isOnline: true,
-        lastSeen: serverTimestamp(),
-      });
-    } else {
-      // Update presence for existing user
-      await updatePresence(userCredential.user.uid, true);
-    }
-    
-    return userCredential;
   };
 
   const resetPassword = (email) => {
     return sendPasswordResetEmail(auth, email);
   };
 
-  const resendVerification = () => {
-      if (currentUser) {
-          return sendEmailVerification(currentUser);
+  const resendVerification = async () => {
+      let user = auth.currentUser || currentUser;
+      
+      if (!user) {
+          throw new Error('No user currently signed in.');
       }
+
+      // If missing email, try to reload to get latest state
+      if (!user.email) {
+          await user.reload();
+          user = auth.currentUser;
+      }
+
+      if (!user.email) {
+          throw new Error('No email associated with this account. Please sign in again.');
+      }
+
+      return sendEmailVerification(user);
   };
 
   const value = {

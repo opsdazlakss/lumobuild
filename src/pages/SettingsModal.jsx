@@ -5,7 +5,7 @@ import { Button } from '../components/shared/Button';
 
 import { Input } from '../components/shared/Input';
 import { StatusSelector } from '../components/shared/StatusSelector';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { uploadToImgBB } from '../services/imgbb';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
@@ -102,6 +102,117 @@ export const SettingsModal = ({ isOpen, onClose }) => {
       setUpdating(false);
     }
   };
+
+  // --- Display Name Logic ---
+  const [displayName, setDisplayName] = useState(userProfile?.displayName || '');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [checkingName, setCheckingName] = useState(false);
+
+  // Initialize display name from profile
+  useEffect(() => {
+    if (userProfile?.displayName) {
+      setDisplayName(userProfile.displayName);
+    }
+  }, [userProfile]);
+
+  // Validate and Check Uniqueness
+  useEffect(() => {
+    // Only check if we are editing and value changed from current
+    if (!isEditingName || displayName === userProfile?.displayName) {
+      setUsernameError('');
+      return;
+    }
+
+    const checkUsername = async () => {
+      if (!displayName) {
+        setUsernameError('');
+        return;
+      }
+
+      if (displayName.length < 3) {
+        setUsernameError('Username must be at least 3 characters');
+        return;
+      }
+
+      if (!/^[a-zA-Z0-9-_]+$/.test(displayName)) {
+        setUsernameError('Only letters, numbers, hyphens (-) and underscores (_) allowed');
+        return;
+      }
+
+      setCheckingName(true);
+      try {
+        // Fetch all users to check for duplicates (same logic as RegisterPage)
+        // Note: For production with many users, this should be a backend function or simpler query if possible.
+        // But we are sticking to existing patterns.
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('displayName', '==', displayName)); 
+        // Note: Firestore is case-sensitive by default for queries unless we handle it.
+        // RegisterPage loads ALL and checks locally lowercase. Let's do a more direct query AND local check if needed?
+        // Actually, let's stick to the RegisterPage pattern of checking against all for lowercase match to ensure true uniqueness.
+        // BUT fetching all users every keystroke is bad.
+        // Let's rely on a direct query for exact match first, or just fetch all once like RegisterPage?
+        // Fetching all once on Edit start is safer for client-side uniqueness like RegisterPage does.
+        
+        const usersSnapshot = await getDocs(usersRef);
+        let taken = false;
+        const targetName = displayName.toLowerCase();
+        
+        usersSnapshot.forEach((doc) => {
+          // Don't check against self
+          if (doc.id === currentUser.uid) return;
+          
+          const name = doc.data().displayName;
+          if (name && name.toLowerCase() === targetName) {
+            taken = true;
+          }
+        });
+
+        if (taken) {
+          setUsernameError('This username is already taken');
+        } else {
+          setUsernameError('');
+        }
+      } catch (err) {
+        console.error('Error checking username:', err);
+      } finally {
+        setCheckingName(false);
+      }
+    };
+
+    const timer = setTimeout(checkUsername, 500); // Debounce
+    return () => clearTimeout(timer);
+  }, [displayName, isEditingName, userProfile, currentUser]);
+
+  const handleUpdateDisplayName = async () => {
+    if (!currentUser || usernameError || checkingName) return;
+    if (displayName === userProfile?.displayName) {
+      setIsEditingName(false);
+      return;
+    }
+
+    setUpdating(true);
+    try {
+        import('firebase/auth').then(async ({ updateProfile }) => {
+            await updateProfile(currentUser, {
+                displayName: displayName
+            });
+        });
+
+        await updateDoc(doc(db, 'users', currentUser.uid), {
+            displayName: displayName
+        });
+        
+        success('Username updated successfully');
+        setIsEditingName(false);
+    } catch (err) {
+        console.error('Error updating username:', err);
+        error('Failed to update username');
+    } finally {
+        setUpdating(false);
+    }
+  };
+  // -------------------------
 
   const handlePhotoFileUpload = async (file) => {
     if (!file || !currentUser) return;
@@ -604,9 +715,65 @@ export const SettingsModal = ({ isOpen, onClose }) => {
               <h3 className="text-sm font-semibold text-dark-muted uppercase tracking-wide mb-4">Account Info</h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center py-2 border-b border-dark-hover">
-                  <div>
-                    <div className="text-xs text-dark-muted uppercase">Display Name</div>
-                    <div className="text-dark-text font-medium">{userProfile?.displayName}</div>
+                  <div className="w-full">
+                    <div className="text-xs text-dark-muted uppercase mb-1">Display Name</div>
+                    
+                    {isEditingName ? (
+                        <div className="flex items-start gap-2">
+                             <div className="flex-1">
+                                <Input
+                                    value={displayName}
+                                    onChange={(e) => setDisplayName(e.target.value)}
+                                    placeholder="Enter new username"
+                                    className={usernameError ? '!border-red-500' : checkingName ? '!border-yellow-500' : '!border-green-500'}
+                                />
+                                {usernameError && (
+                                    <p className="text-xs text-red-500 mt-1">{usernameError}</p>
+                                )}
+                                {!usernameError && displayName && displayName !== userProfile?.displayName && !checkingName && (
+                                    <p className="text-xs text-green-500 mt-1">✓ Username available</p>
+                                )}
+                                {checkingName && (
+                                    <p className="text-xs text-yellow-500 mt-1">Checking availability...</p>
+                                )}
+                             </div>
+                             <div className="flex gap-1 mt-1">
+                                 <Button 
+                                    size="sm" 
+                                    variant="primary" 
+                                    onClick={handleUpdateDisplayName}
+                                    disabled={!!usernameError || checkingName || !displayName || updating}
+                                 >
+                                    Save
+                                 </Button>
+                                 <Button 
+                                    size="sm" 
+                                    variant="secondary" 
+                                    onClick={() => {
+                                        setIsEditingName(false);
+                                        setDisplayName(userProfile?.displayName || '');
+                                        setUsernameError('');
+                                    }}
+                                 >
+                                    Cancel
+                                 </Button>
+                             </div>
+                        </div>
+                    ) : (
+                        <div className="flex justify-between items-center group">
+                            <div className="text-dark-text font-medium text-lg">
+                                {userProfile?.displayName}
+                            </div>
+                            <Button
+                                size="sm" 
+                                variant="secondary" 
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => setIsEditingName(true)}
+                            >
+                                Edit
+                            </Button>
+                        </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b border-dark-hover">

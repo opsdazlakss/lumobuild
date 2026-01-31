@@ -8,6 +8,7 @@ import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { SSOTestPage } from './pages/SSOTestPage';
 import { SSOLoginPage } from './pages/SSOLoginPage';
 import { MainApp } from './pages/MainApp';
+import { UsernameSetupScreen } from './components/auth/UsernameSetupScreen';
 
 function AuthRouter() {
   const { currentUser, userProfile, loading } = useAuth();
@@ -48,6 +49,21 @@ function AuthRouter() {
             Refresh
           </button>
         </div>
+      </div>
+    );
+  }
+
+  // Force Username Setup
+  // Check if isUsernameSet is falsy (undefined, null, false). 
+  // This ensures even old users (without the field) are forced to update/verify their name.
+  if (currentUser && userProfile && !userProfile.isUsernameSet) {
+      return <UsernameSetupScreen />;
+  }
+
+  if (currentUser && !userProfile) {
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+        <div className="text-dark-text text-xl">Loading Profile...</div>
       </div>
     );
   }

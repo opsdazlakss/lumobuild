@@ -782,6 +782,38 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     <div className="text-dark-text font-medium">{currentUser?.email}</div>
                   </div>
                 </div>
+                <div className="flex justify-between items-center py-2 border-b border-dark-hover">
+                   <div>
+                     <div className="text-dark-text font-medium">Desktop Notifications</div>
+                     <div className="text-xs text-dark-muted">Show popup notifications on desktop</div>
+                   </div>
+                   <label className="relative inline-flex items-center cursor-pointer">
+                     <input 
+                       type="checkbox" 
+                       className="sr-only peer"
+                       checked={userProfile?.settings?.notificationsEnabled !== false}
+                       onChange={async (e) => {
+                          const enabled = e.target.checked;
+                          try {
+                             // Using a 'settings' map to keep root clean
+                             await updateDoc(doc(db, 'users', currentUser.uid), {
+                                "settings.notificationsEnabled": enabled
+                             });
+                          } catch (err) {
+                             console.error("Failed to update notification settings", err);
+                          }
+                       }}
+                     />
+                     <div className="w-11 h-6 bg-dark-input peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-primary"></div>
+                   </label>
+                </div>
+
+                <div className="flex justify-between items-center py-2 border-b border-dark-hover">
+                  <div>
+                    <div className="text-xs text-dark-muted uppercase">Role</div>
+                    <div className="text-dark-text font-medium capitalize">{userProfile?.role}</div>
+                  </div>
+                </div>
                 <div className="flex justify-between items-center py-2">
                   <div>
                     <div className="text-xs text-dark-muted uppercase">Role</div>

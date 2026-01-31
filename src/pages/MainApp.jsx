@@ -23,6 +23,7 @@ import { CallModal } from '../components/call/CallModal';
 import { FaHashtag } from 'react-icons/fa';
 import { MdPushPin, MdMenu, MdPeople, MdClose, MdAndroid } from 'react-icons/md';
 import { VerifyEmailScreen } from '../components/auth/VerifyEmailScreen';
+import { NotificationObserver } from '../components/shared/NotificationObserver';
 import { usePresence } from '../hooks/usePresence';
 import { DMView } from '../components/dm/DMView';
 import { Capacitor } from '@capacitor/core';
@@ -348,8 +349,9 @@ export const MainApp = () => {
     <SoundboardProvider>
       <VoiceChannelProvider>
           <HotkeyProvider>
-          <CallProvider>
+            <CallProvider>
             <GlobalHotkeys />
+            <NotificationObserver />
             <div 
               className="flex h-screen bg-dark-bg overflow-hidden"
               {...swipeHandlers}

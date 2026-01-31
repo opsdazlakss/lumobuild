@@ -22,6 +22,7 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
   };
 
   const { startCall } = useCall();
+  const { currentUser } = useAuth();
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="" size="sm" showCloseButton={false}>
@@ -43,7 +44,7 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
            onClick={onClose}
            className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white/80 hover:text-white transition-colors z-20 backdrop-blur-sm"
         >
-          <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 24 24" height="24" width="24" xmlns="http://www.w3.org/2000/svg"><path fill="none" d="M0 0h24v24H0z"></path><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+          <svg stroke="currentColor" fill="currentColor" strokeWidth="0" viewBox="0 0 24 24" height="24" width="24" xmlns="http://www.w3.org/2000/svg"><path fill="none" d="M0 0h24v24H0z"></path><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 17.59 13.41 12z"></path></svg>
         </button>
 
         {/* Content Container - Pushed to bottom */}
@@ -160,7 +161,7 @@ export const UserProfileCard = ({ user, isOpen, onClose, onMessage }) => {
             </div>
 
             {/* Action Buttons */}
-            {user.id !== useAuth().currentUser?.uid && (
+            {user.id !== currentUser?.uid && (
                 <div className="flex gap-4 justify-center mt-6 w-full max-w-xs">
                    <button 
                      onClick={() => onMessage && onMessage(user)}

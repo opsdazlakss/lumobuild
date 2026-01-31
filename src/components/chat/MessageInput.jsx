@@ -531,6 +531,18 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           );
           
           await Promise.all(mentionUpdates);
+
+          // NEW: Send Push Notification for Mentions
+          fetch('/api/send-notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+               targetUserIds: mentions,
+               title: 'New Mention',
+               body: `${userProfile?.displayName || 'Someone'} mentioned you in ${channel?.name || 'a channel'}`,
+               data: { serverId, channelId }
+            })
+          }).catch(err => console.error('Failed to send push for mention:', err));
         }
       } else {
         // Direct Message
@@ -555,6 +567,18 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
             [`unreadDms.${channelId}.lastMessageAt`]: serverTimestamp(),
             [`unreadDms.${channelId}.text`]: message.trim().substring(0, 50)
           }).catch(err => console.error('Error updating unread DM count:', err));
+
+          // NEW: Send Push Notification for DM
+          fetch('/api/send-notification', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                 targetUserIds: [recipient.id],
+                 title: `New Message from ${userProfile?.displayName}`,
+                 body: message.trim().substring(0, 100),
+                 data: { dmId: channelId }
+              })
+          }).catch(err => console.error('Failed to send push for DM:', err));
         }
       }
       

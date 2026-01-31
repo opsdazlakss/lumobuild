@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 
 export const SSOLoginPage = ({ onBackToLogin }) => {
   const { currentUser } = useAuth();
-  const [status, setStatus] = useState('idle'); // idle, processing, success, error
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
 
   useEffect(() => {

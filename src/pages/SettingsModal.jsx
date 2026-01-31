@@ -16,6 +16,7 @@ import { useHotkeys } from '../context/HotkeyContext';
 import { KeybindRecorder } from '../components/settings/KeybindRecorder';
 
 import { MdKeyboard } from 'react-icons/md';
+import { SSODebugTool } from '../components/settings/SSODebugTool';
 
 // Settings categories
 const SETTINGS_TABS = [
@@ -987,11 +988,19 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
       case 'debug':
         return (
-          <div className="space-y-8">
-            <h1 className="text-2xl font-bold text-dark-text">🧪 Debug Tools</h1>
-            
+            <div className="space-y-6">
+              <div className="bg-dark-bg rounded-lg p-6">
+                 <h3 className="text-lg font-semibold text-dark-text mb-4">App Info</h3>
+                 <pre className="text-xs text-dark-muted bg-dark-sidebar p-4 rounded">
+                    Version: {'2.0.32'}<br/>
+                    Build: {import.meta.env.MODE}<br/>
+                    UA: {navigator.userAgent}
+                 </pre>
+              </div>
 
-          </div>
+              {/* SSO Debug Tool */}
+              <SSODebugTool />
+            </div>
         );
 
       default:

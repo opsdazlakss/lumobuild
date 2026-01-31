@@ -10,11 +10,52 @@ import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 
 import { MainApp } from './pages/MainApp';
 import { UsernameSetupScreen } from './components/auth/UsernameSetupScreen';
+import { signInWithCustomToken } from 'firebase/auth'; // Import for SSO
+import { auth } from './services/firebase'; // Import for SSO
 
 function AuthRouter() {
   const { currentUser, userProfile, loading } = useAuth();
   usePushNotifications();
   const [authView, setAuthView] = useState('login');
+
+  // Handle SSO login from URL parameter (SECURE FLOW)
+  useEffect(() => {
+    const handleSSO = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const ssoCode = urlParams.get('sso_code');
+
+      if (ssoCode && !currentUser) {
+        console.log('🔐 SSO Code detected, exchanging...');
+        
+        try {
+          // Clear query param immediately
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          // Call Backend to exchange code for token
+          // Using production URL since local Vite doesn't proxy /api by default
+          const API_BASE = 'https://lumobuild.vercel.app'; 
+          
+          const response = await fetch(`${API_BASE}/api/sso/exchange`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: ssoCode })
+          });
+
+          const data = await response.json();
+          if (!data.success) throw new Error(data.error || 'Exchange failed');
+
+          console.log('✅ SSO Exchange successful. Logging in...');
+          await signInWithCustomToken(auth, data.customToken);
+          
+        } catch (err) {
+          console.error('❌ SSO Error:', err);
+          alert('SSO Login Failed: ' + err.message);
+        }
+      }
+    };
+
+    handleSSO();
+  }, [currentUser]);
 
 
 

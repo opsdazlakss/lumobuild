@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 
 export const SSOLoginPage = ({ onBackToLogin }) => {
   const { currentUser } = useAuth();
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState('idle'); // idle, processing, success, error
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -27,51 +27,16 @@ export const SSOLoginPage = ({ onBackToLogin }) => {
       setStatus('processing');
       
       const urlParams = new URLSearchParams(window.location.search);
-      // Check if explicitly passed as sso_token OR if the 'sso' token looks like a Google ID Token
-      const ssoParamVal = urlParams.get('sso_token') || urlParams.get('sso');
-      let isGoogleToken = !!urlParams.get('sso_token');
-
-      // Auto-detect Google Token from payload if not explicitly marked
-      if (!isGoogleToken && ssoParamVal) {
-          try {
-              // Simple JWT decode check
-              const parts = ssoParamVal.split('.');
-              if (parts.length === 3) {
-                  const payload = JSON.parse(atob(parts[1]));
-                  // Google tokens usually have 'iss' containing google.com
-                  if (payload.iss && (payload.iss.includes('google.com') || payload.iss.includes('accounts.google'))) {
-                      console.log('Detected Google ID Token in sso param');
-                      isGoogleToken = true;
-                  }
-              }
-          } catch (e) {
-              // Not a standard JWT or failed to parse, assume Custom Token
-              console.log('Token check failed, assuming Custom Token', e);
-          }
-      } 
+      const isGoogleToken = urlParams.get('sso_token'); 
       
       let customToken = tokenParam;
       
       if (isGoogleToken) {
         console.log('🔍 Exchanging Google ID token for custom token...');
-        
-        // Extract email from token payload if possible
-        let tokenEmail = null;
-        try {
-            const payload = JSON.parse(atob(tokenParam.split('.')[1]));
-            tokenEmail = payload.email;
-            console.log('📧 Email extracted from token:', tokenEmail);
-        } catch (e) {
-            console.warn('Could not extract email from token:', e);
-        }
-
         const response = await fetch('https://lumobuild.vercel.app/api/sso-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-              googleIdToken: tokenParam,
-              email: tokenEmail // explicitly send email
-          })
+          body: JSON.stringify({ googleIdToken: tokenParam })
         });
 
         const data = await response.json();

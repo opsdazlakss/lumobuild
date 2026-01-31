@@ -32,20 +32,26 @@ export const NotificationObserver = () => {
     info(`${title}: ${body}`);
 
     // 2. Desktop Notification (if invisible or requested)
-    if ('Notification' in window && Notification.permission === 'granted') {
-       if (document.hidden) { // Only show desktop if app is not focused? Or always? User asked for "like existing windows notification".
-          new Notification(title, {
-             body: body,
-             icon: '/icon.png' // Ensure this exists or use valid path
-          });
+    if ('Notification' in window) {
+       if (Notification.permission === 'granted') {
+           const doNotify = () => {
+                try {
+                    new Notification(title, {
+                        body: body,
+                        icon: '/vite.svg' // Changed to vite.svg since public/icon.png might be missing. Vite apps usually have this.
+                    });
+                } catch (e) {
+                    console.error("Notification trigger failed:", e);
+                }
+           };
+
+           if (document.hidden) { 
+              doNotify();
+           } else {
+              doNotify();
+           }
        } else {
-          // Even if focused, user asked for "bottom right UI notification" (Toast covers this)
-          // AND "windows notification" (Desktop Notification).
-          // We can do both.
-           new Notification(title, {
-             body: body,
-             icon: '/icon.png'
-          });
+           console.log("Notification permission not granted:", Notification.permission);
        }
     }
   };

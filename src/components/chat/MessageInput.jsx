@@ -533,7 +533,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           await Promise.all(mentionUpdates);
 
           // NEW: Send Push Notification for Mentions
-          fetch('/api/send-notification', {
+          const apiBase = import.meta.env.VITE_API_URL || '';
+          fetch(`${apiBase}/api/send-notification`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -569,7 +570,8 @@ export const MessageInput = ({ serverId, channelId, channel, userId, userProfile
           }).catch(err => console.error('Error updating unread DM count:', err));
 
           // NEW: Send Push Notification for DM
-          fetch('/api/send-notification', {
+          const apiBase = import.meta.env.VITE_API_URL || '';
+          fetch(`${apiBase}/api/send-notification`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

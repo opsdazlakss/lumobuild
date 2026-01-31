@@ -1,5 +1,9 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
+import { db, auth } from '../services/firebase';
+import { useAuth } from '../context/AuthContext';
 
 export const SSOLoginPage = ({ onBackToLogin }) => {
   const { currentUser } = useAuth();

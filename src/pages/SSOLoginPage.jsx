@@ -7,9 +7,22 @@ import { useAuth } from '../context/AuthContext';
 
 export const SSOLoginPage = ({ onBackToLogin }) => {
   const { currentUser } = useAuth();
-  // ... existing state ...
+  const [status, setStatus] = useState('idle'); // idle, processing, success, error
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
-  // ... existing useEffect ...
+  useEffect(() => {
+    // Get token from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const ssoToken = urlParams.get('sso_token') || urlParams.get('sso');
+    
+    if (ssoToken) {
+      handleSSOLogin(ssoToken);
+    } else {
+      // If no token, redirect to normal login
+      navigate('/login');
+    }
+  }, []);
 
   const handleSSOLogin = async (tokenParam) => {
     try {

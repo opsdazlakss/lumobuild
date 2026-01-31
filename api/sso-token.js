@@ -93,11 +93,30 @@ export default async function handler(req, res) {
     // Google ID token'ı doğrula
     const decodedToken = await admin.auth().verifyIdToken(googleIdToken);
     
-    console.log('Token verified for user:', decodedToken.uid);
+    console.log('Token verified. Google UID:', decodedToken.uid);
+
+    let lumoUid = decodedToken.uid;
+    const userEmail = decodedToken.email || email;
+
+    // ÖNEMLİ: E-posta adresiyle mevcut bir kullanıcı var mı kontrol et.
+    // Eğer varsa, o kullanıcının UID'sini kullan. Böylece yeni kullanıcı açmaz, mevcut hesaba bağlar.
+    if (userEmail) {
+      try {
+        const existingUser = await admin.auth().getUserByEmail(userEmail);
+        console.log('Existing user found by email. Linking to UID:', existingUser.uid);
+        lumoUid = existingUser.uid;
+      } catch (err) {
+        if (err.code !== 'auth/user-not-found') {
+             console.error('Error checking existing user:', err);
+        }
+        // Kullanıcı yoksa Google UID'sini kullanmaya devam et
+        console.log('No existing user found with this email. Creating/Using Google UID.');
+      }
+    }
     
-    // Custom token oluştur - bu token ile Lumo app'e giriş yapılacak
-    const customToken = await admin.auth().createCustomToken(decodedToken.uid, {
-      email: decodedToken.email || email,
+    // Custom token oluştur - bulduğumuz (veya varolan) UID ile
+    const customToken = await admin.auth().createCustomToken(lumoUid, {
+      email: userEmail,
       name: decodedToken.name,
       picture: decodedToken.picture,
       sourceApp: 'MeydanApp',

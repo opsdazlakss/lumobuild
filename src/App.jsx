@@ -7,8 +7,7 @@ import { usePushNotifications } from './hooks/usePushNotifications';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
-import { SSOTestPage } from './pages/SSOTestPage';
-import { SSOLoginPage } from './pages/SSOLoginPage';
+
 import { MainApp } from './pages/MainApp';
 import { UsernameSetupScreen } from './components/auth/UsernameSetupScreen';
 
@@ -17,14 +16,7 @@ function AuthRouter() {
   usePushNotifications();
   const [authView, setAuthView] = useState('login');
 
-  // Handle SSO login from URL parameter
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const ssoToken = urlParams.get('sso') || urlParams.get('sso_token');
-    if (ssoToken && !currentUser) {
-      setAuthView('sso-login');
-    }
-  }, [currentUser]);
+
 
   if (loading) {
     return (
@@ -85,7 +77,6 @@ function AuthRouter() {
         <LoginPage
           onSwitchToRegister={() => setAuthView('register')}
           onSwitchToReset={() => setAuthView('reset')}
-          onSwitchToSSOTest={() => setAuthView('sso-test')}
         />
       )}
       {authView === 'register' && (
@@ -94,12 +85,7 @@ function AuthRouter() {
       {authView === 'reset' && (
         <ResetPasswordPage onSwitchToLogin={() => setAuthView('login')} />
       )}
-      {authView === 'sso-test' && (
-        <SSOTestPage onBack={() => setAuthView('login')} />
-      )}
-      {authView === 'sso-login' && (
-        <SSOLoginPage onBackToLogin={() => setAuthView('login')} />
-      )}
+
     </>
   );
 }

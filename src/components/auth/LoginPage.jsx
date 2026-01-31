@@ -4,7 +4,7 @@ import { Input } from '../shared/Input';
 import { Button } from '../shared/Button';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
 
-export const LoginPage = ({ onSwitchToRegister, onSwitchToReset, onSwitchToSSOTest }) => {
+export const LoginPage = ({ onSwitchToRegister, onSwitchToReset }) => {
   const { login, signInWithGoogle } = useAuth();
   const [formData, setFormData] = useState({
     email: '',

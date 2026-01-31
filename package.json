@@ -1,15 +1,7 @@
 {
   "name": "lumo",
   "private": true,
-<<<<<<< HEAD
-<<<<<<< HEAD
-  "version": "2.0.20",
-=======
-  "version": "2.0.19",
->>>>>>> 8176cea (Fix SSO Login: Extract email in frontend and improve backend user syncing)
-=======
-  "version": "2.0.22",
->>>>>>> 0aa8d3a (Bump version to v2.0.22)
+  "version": "2.0.26",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

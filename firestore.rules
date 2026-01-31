@@ -33,6 +33,10 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens']);
     }
 
+    function onlyUpdatingUnreadDms() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['unreadDms']);
+    }
+
     // --- USERS KOLEKSİYONU ---
     match /users/{userId} {
       allow read: if true;
@@ -42,15 +46,21 @@ service cloud.firestore {
       
       // Güncelleme: 
       // 1. Admin her şeyi yapabilir
-      // 2. Kullanıcı kendi profilini güncelleyebilir ANCAK kritik alanları (role, isBanned) değiştiremez
+      // 2. HERHANGİ BİR AUTH KULLANICI: Sadece bildirim sayılarını (unreadMentions, unreadDms) güncelleyebilir
+      // 3. KULLANICININ KENDİSİ: FcmToken ve diğer güvenli profil alanlarını güncelleyebilir (Role, Ban hariç)
       allow update: if request.auth != null && (
         isAdmin() || 
+        onlyUpdatingUnreadMentions() ||
+        onlyUpdatingUnreadDms() ||
         (request.auth.uid == userId && (
-             // Sadece bildirim/okunmamış sayılarını güncelliyor olabilir
-             onlyUpdatingUnreadMentions() || 
              onlyUpdatingFcmTokens() || 
-             // YA DA profil değişikliği yapıyor ama 'role' ve 'isBanned' alanlarına dokunmuyor
-             (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isBanned', 'isVerified']))
+             // YA DA profil değişikliği yapıyor:
+             (
+               // 1. Yasaklı alanlara (isBanned, isVerified) ASLA dokunamaz
+               !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isBanned', 'isVerified']) &&
+               // 2. Role alanına dokunursa, yeni değer sadece 'member' olabilir (Self-Repair için gerekli)
+               (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || request.resource.data.role == 'member')
+             )
         ))
       );
       

@@ -13,7 +13,7 @@ import {
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
-import { doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, onSnapshot, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 
 const AuthContext = createContext({});
 
@@ -141,54 +141,90 @@ export const AuthProvider = ({ children }) => {
     
     try {
       if (Capacitor.isNativePlatform()) {
-        // Native mobile: use Capacitor GoogleAuth plugin
+        // Native mobile logic...
         console.log('[GoogleAuth] Starting native sign-in...');
         const googleUser = await GoogleAuth.signIn();
-        console.log('[GoogleAuth] Got Google user:', JSON.stringify(googleUser, null, 2));
         const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
-        console.log('[GoogleAuth] Created Firebase credential, signing in...');
         userCredential = await signInWithCredential(auth, credential);
-        console.log('[GoogleAuth] Firebase sign-in successful!');
       } else {
-        // Web: use Firebase popup
+        // Web logic...
         const provider = new GoogleAuthProvider();
         userCredential = await signInWithPopup(auth, provider);
       }
       
-      // Check if user profile exists, if not create it
-      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-          displayName: userCredential.user.displayName,
-          email: userCredential.user.email,
-          photoURL: userCredential.user.photoURL,
+      const user = userCredential.user;
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      // Self-Healing Logic:
+      // Treat as NEW if doc doesn't exist OR if it's missing critical fields (like email).
+      // This repairs "broken" accounts that only have { isOnline: true }
+      const isIncomplete = !userDoc.exists() || !userDoc.data()?.email || !userDoc.data()?.role;
+
+      if (isIncomplete) {
+        console.log('[Auth] Profile incomplete or new. Creating/Repairing...');
+        
+        let uniqueDisplayName = userDoc.data()?.displayName || user.displayName;
+        
+        // Ensure uniqueness only if we don't already have a valid name in DB
+        // If the DB has a name, we assume it was already uniqueness-checked (or we keep it)
+        // But if it's a repair, we might want to check again. 
+        // Let's stick to: If we are generating a name from Google Auth, check uniqueness.
+        
+        if (!uniqueDisplayName || uniqueDisplayName === user.displayName) {
+             if (uniqueDisplayName) {
+                // Check if taken
+                const usersRef = collection(db, 'users');
+                const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
+                const snapshot = await getDocs(q);
+                
+                let taken = false;
+                snapshot.forEach(doc => {
+                    if (doc.id !== user.uid) taken = true;
+                });
+
+                if (taken) {
+                    const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
+                    uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
+                }
+            } else {
+                 uniqueDisplayName = `User#${Math.floor(1000 + Math.random() * 9000)}`;
+            }
+        }
+
+        // Create/Repair Full Profile
+        await setDoc(userDocRef, {
+          displayName: uniqueDisplayName,
+          email: user.email,
+          photoUrl: user.photoURL,
           role: 'member',
-          createdAt: serverTimestamp(),
+          createdAt: userDoc.data()?.createdAt || serverTimestamp(), // Keep original createdAt if exists
           isOnline: true,
           lastSeen: serverTimestamp(),
-          isUsernameSet: false
-        });
+          isUsernameSet: true,
+          servers: userDoc.data()?.servers || [] // Keep existing servers or init empty
+        }, { merge: true });
+        
+        console.log('User profile created/repaired:', uniqueDisplayName);
+
       } else {
-        // Update presence for existing user
+        // Healthy User Update
         const updates = {
            isOnline: true,
            lastSeen: serverTimestamp()
         };
-
-        // Migration: If user exists and has a displayName but is missing isUsernameSet, mark it true
+        
+        // Auto-fix missing isUsernameSet flag for legacy users
         if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
           updates.isUsernameSet = true;
         }
 
-        await setDoc(doc(db, 'users', userCredential.user.uid), updates, { merge: true });
+        await setDoc(userDocRef, updates, { merge: true });
       }
       
       return userCredential;
     } catch (error) {
       console.error('[GoogleAuth] ERROR:', error);
-      console.error('[GoogleAuth] Error code:', error.code);
-      console.error('[GoogleAuth] Error message:', error.message);
-      console.error('[GoogleAuth] Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       throw error;
     }
   };

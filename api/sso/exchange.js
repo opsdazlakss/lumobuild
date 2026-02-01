@@ -45,7 +45,7 @@ export default async function handler(req, res) {
     const db = admin.firestore();
     const codeRef = db.collection('sso_codes').doc(code);
 
-    // Run as a Transaction
+    // Run as a Transaction (one-time use)
     const result = await db.runTransaction(async (t) => {
       const doc = await t.get(codeRef);
 
@@ -56,18 +56,20 @@ export default async function handler(req, res) {
       const data = doc.data();
       const now = admin.firestore.Timestamp.now();
 
+      // Check expiration
       if (data.expiresAt < now) {
         t.delete(codeRef);
         throw new Error('EXPIRED_CODE');
       }
 
+      // Valid! Delete immediately to prevent replay
       t.delete(codeRef);
       return data;
     });
 
     console.log(`Exchanging code for user ${result.email} (${result.displayName})`);
 
-    // CRITICAL FIX: Ensure user profile is complete BEFORE creating custom token
+    // Ensure user profile is synced before creating custom token
     try {
       const userRecord = await admin.auth().getUser(result.uid);
       
@@ -94,9 +96,9 @@ export default async function handler(req, res) {
     const customToken = await admin.auth().createCustomToken(result.uid, {
       sso: true,
       source: 'sso_code_flow',
-      email: result.email,           // ← EKLENDI
-      displayName: result.displayName, // ← EKLENDI
-      photoURL: result.photoURL        // ← EKLENDI
+      email: result.email,
+      displayName: result.displayName,
+      photoURL: result.photoURL
     });
 
     return res.status(200).json({ 

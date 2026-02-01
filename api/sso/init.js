@@ -53,23 +53,21 @@ export default async function handler(req, res) {
 
     console.log('Decoded Token Info:', { uid, email, name, picture });
 
-    // 2. CRITICAL: Ensure user exists in Lumo Firebase with proper data
+    // 2. Ensure user exists in Lumo Firebase with Email provider
     let userRecord;
     try {
       // Try to get existing user
       userRecord = await admin.auth().getUser(uid);
       console.log('Existing user found:', userRecord.email);
 
-      // UPDATE user profile if name/picture exists but not set
+      // Update profile if name/picture exists but not set
       const needsUpdate = 
         (name && !userRecord.displayName) || 
-        (picture && !userRecord.photoURL) ||
-        !userRecord.email;
+        (picture && !userRecord.photoURL);
 
       if (needsUpdate) {
-        console.log('Updating user profile with name/picture...');
+        console.log('Updating user profile...');
         await admin.auth().updateUser(uid, {
-          email: email,
           displayName: name,
           photoURL: picture,
           emailVerified: true
@@ -79,16 +77,22 @@ export default async function handler(req, res) {
 
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
-        // User doesn't exist in Lumo Firebase - CREATE with full profile
-        console.log('Creating new user in Lumo Firebase...');
+        // User doesn't exist - CREATE with Email/Password provider
+        console.log('Creating new user with Email provider...');
+        
+        // Generate random password (user will never use it, only SSO login)
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        
         userRecord = await admin.auth().createUser({
           uid: uid,
           email: email,
+          password: randomPassword, // This creates Email/Password provider
           displayName: name,
           photoURL: picture,
           emailVerified: true
         });
-        console.log('New user created:', userRecord.email);
+        
+        console.log('New user created with Email provider');
       } else {
         throw error;
       }
@@ -97,16 +101,16 @@ export default async function handler(req, res) {
     // 3. Generate SSO Code
     const code = crypto.randomBytes(16).toString('hex');
 
-    // 4. Store in Firestore with ALL user data
+    // 4. Store in Firestore with user data
     const db = admin.firestore();
     const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 5 * 60 * 1000));
 
     await db.collection('sso_codes').doc(code).set({
       uid: uid,
       email: email,
-      displayName: name,        // ← EKLENDI
-      photoURL: picture,        // ← EKLENDI
-      emailVerified: true,      // ← EKLENDI
+      displayName: name,
+      photoURL: picture,
+      emailVerified: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: expiresAt
     });
@@ -117,13 +121,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ 
       success: true, 
       code: code,
-      expiresIn: 300,
-      debug: {
-        email,
-        name,
-        picture,
-        uid
-      }
+      expiresIn: 300
     });
 
   } catch (error) {

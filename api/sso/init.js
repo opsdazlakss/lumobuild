@@ -51,42 +51,45 @@ export default async function handler(req, res) {
     const name = decodedToken.name || decodedToken.email?.split('@')[0] || 'User';
     const picture = decodedToken.picture || null;
 
-    console.log('[INIT] ===== SSO INIT START =====');
-    console.log('[INIT] UID:', uid);
-    console.log('[INIT] Email:', email);
-    console.log('[INIT] Name:', name);
-    console.log('[INIT] Picture:', picture);
+    console.log('[INIT] Token Info:', { uid, email, name });
 
     // 2. Check if user exists
     let userRecord;
-    let userExists = false;
+    let isNewUser = false;
     
     try {
       userRecord = await admin.auth().getUser(uid);
-      userExists = true;
-      console.log('[INIT] ✅ User already exists');
-      console.log('[INIT] Current displayName:', userRecord.displayName);
-      console.log('[INIT] Current photoURL:', userRecord.photoURL);
-      console.log('[INIT] Current email:', userRecord.email);
-      console.log('[INIT] Providers:', userRecord.providerData.map(p => p.providerId).join(', '));
+      console.log('[INIT] ✅ Existing user found');
+      
+      // ⚠️ SADECE EKSİK BİLGİLERİ TAMAMLA - OVERRIDE YAPMA!
+      const needsRepair = 
+        !userRecord.email ||  // Email yoksa ekle
+        !userRecord.displayName ||  // DisplayName yoksa ekle
+        (userRecord.providerData && userRecord.providerData.length === 0); // Provider yoksa ekle
+
+      if (needsRepair) {
+        console.log('[INIT] ⚠️ User profile incomplete, repairing...');
+        
+        await admin.auth().updateUser(uid, {
+          email: userRecord.email || email, // Sadece yoksa set et
+          displayName: userRecord.displayName || name, // Sadece yoksa set et
+          photoURL: userRecord.photoURL || picture, // Sadece yoksa set et
+          emailVerified: true
+        });
+        
+        console.log('[INIT] ✅ Incomplete profile repaired');
+      } else {
+        console.log('[INIT] Profile complete, no update needed');
+      }
 
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
-        console.log('[INIT] ⚠️ User does not exist, will create...');
-      } else {
-        console.error('[INIT] ❌ Error checking user:', error);
-        throw error;
-      }
-    }
-
-    // 3. Create or Update User
-    if (!userExists) {
-      // CREATE NEW USER
-      console.log('[INIT] Creating new user...');
-      
-      const randomPassword = crypto.randomBytes(32).toString('hex');
-      
-      try {
+        // YENİ KULLANICI - TAM PROFİL OLUŞTUR
+        console.log('[INIT] 🆕 New user, creating with full profile...');
+        isNewUser = true;
+        
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        
         userRecord = await admin.auth().createUser({
           uid: uid,
           email: email,
@@ -96,54 +99,16 @@ export default async function handler(req, res) {
           emailVerified: true
         });
         
-        console.log('[INIT] ✅ User created successfully');
-        console.log('[INIT] Created UID:', userRecord.uid);
-        console.log('[INIT] Created Email:', userRecord.email);
-        console.log('[INIT] Created DisplayName:', userRecord.displayName);
-        
-      } catch (createError) {
-        console.error('[INIT] ❌ CREATE USER FAILED:', createError);
-        console.error('[INIT] Error code:', createError.code);
-        console.error('[INIT] Error message:', createError.message);
-        throw createError;
-      }
-      
-    } else {
-      // UPDATE EXISTING USER
-      const needsUpdate = 
-        (name && !userRecord.displayName) || 
-        (picture && !userRecord.photoURL) ||
-        !userRecord.email;
-
-      if (needsUpdate) {
-        console.log('[INIT] Updating user profile...');
-        
-        try {
-          await admin.auth().updateUser(uid, {
-            email: email || userRecord.email,
-            displayName: name || userRecord.displayName,
-            photoURL: picture || userRecord.photoURL,
-            emailVerified: true
-          });
-          
-          console.log('[INIT] ✅ User updated successfully');
-          
-        } catch (updateError) {
-          console.error('[INIT] ❌ UPDATE USER FAILED:', updateError);
-          console.error('[INIT] Error code:', updateError.code);
-          console.error('[INIT] Error message:', updateError.message);
-          // Don't throw - continue with code generation
-        }
+        console.log('[INIT] ✅ New user created');
       } else {
-        console.log('[INIT] No update needed');
+        throw error;
       }
     }
 
-    // 4. Generate SSO Code
+    // 3. Generate SSO Code
     const code = crypto.randomBytes(16).toString('hex');
-    console.log('[INIT] Generated SSO code:', code);
 
-    // 5. Store in Firestore
+    // 4. Store in Firestore
     const db = admin.firestore();
     const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 5 * 60 * 1000));
 
@@ -153,36 +118,24 @@ export default async function handler(req, res) {
       displayName: name,
       photoURL: picture,
       emailVerified: true,
+      isNewUser: isNewUser, // ← Yeni eklendi (exchange'de kullanılacak)
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       expiresAt: expiresAt
     });
 
-    console.log('[INIT] ✅ SSO code stored in Firestore');
-    console.log('[INIT] ===== SSO INIT END =====');
+    console.log('[INIT] ✅ SSO code generated');
 
     return res.status(200).json({ 
       success: true, 
       code: code,
-      expiresIn: 300,
-      debug: {
-        uid,
-        email,
-        name,
-        userExists
-      }
+      expiresIn: 300
     });
 
   } catch (error) {
-    console.error('[INIT] ❌❌❌ FATAL ERROR ❌❌❌');
     console.error('[INIT] Error:', error);
-    console.error('[INIT] Error code:', error.code);
-    console.error('[INIT] Error message:', error.message);
-    console.error('[INIT] Stack:', error.stack);
-    
     return res.status(500).json({ 
       error: 'Internal Server Error', 
-      details: error.message,
-      code: error.code
+      details: error.message
     });
   }
 }

@@ -56,49 +56,40 @@ export default async function handler(req, res) {
       const data = doc.data();
       const now = admin.firestore.Timestamp.now();
 
-      // Check expiration
       if (data.expiresAt < now) {
         t.delete(codeRef);
         throw new Error('EXPIRED_CODE');
       }
 
-      // Valid! Delete immediately to prevent replay
       t.delete(codeRef);
       return data;
     });
 
-    console.log(`Exchanging code for user ${result.email} (${result.displayName})`);
+    console.log(`[EXCHANGE] Code for ${result.email}`);
 
-    // Ensure user profile is synced before creating custom token
-    try {
-      const userRecord = await admin.auth().getUser(result.uid);
+    // ⚠️ SADECE YENİ KULLANICILAR İÇİN PROFİL SYNC YAP
+    if (result.isNewUser) {
+      console.log('[EXCHANGE] New user detected, syncing profile...');
       
-      // If displayName or photoURL missing, update NOW
-      const needsProfileUpdate = 
-        (result.displayName && !userRecord.displayName) ||
-        (result.photoURL && !userRecord.photoURL);
-
-      if (needsProfileUpdate) {
-        console.log('Syncing user profile before token creation...');
+      try {
         await admin.auth().updateUser(result.uid, {
           displayName: result.displayName,
           photoURL: result.photoURL,
           emailVerified: true
         });
-        console.log('Profile synced successfully');
+        console.log('[EXCHANGE] ✅ New user profile synced');
+      } catch (error) {
+        console.error('[EXCHANGE] Profile sync error:', error);
       }
-    } catch (error) {
-      console.error('Profile sync error:', error);
-      // Continue anyway - custom token will still work
+    } else {
+      console.log('[EXCHANGE] Existing user, skipping profile update');
     }
 
-    // Create Custom Token with claims
+    // Create Custom Token
     const customToken = await admin.auth().createCustomToken(result.uid, {
       sso: true,
       source: 'sso_code_flow',
-      email: result.email,
-      displayName: result.displayName,
-      photoURL: result.photoURL
+      isNewUser: result.isNewUser // ← Frontend'e bilgi ver
     });
 
     return res.status(200).json({ 
@@ -109,11 +100,12 @@ export default async function handler(req, res) {
         displayName: result.displayName,
         photoURL: result.photoURL,
         uid: result.uid
-      }
+      },
+      isNewUser: result.isNewUser // ← Frontend'e bilgi ver
     });
 
   } catch (error) {
-    console.error('SSO Exchange Error:', error);
+    console.error('[EXCHANGE] Error:', error);
     
     if (error.message === 'INVALID_CODE') {
       return res.status(400).json({ error: 'Invalid or used code' });

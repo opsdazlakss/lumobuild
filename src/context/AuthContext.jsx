@@ -145,55 +145,56 @@ export const AuthProvider = ({ children }) => {
   };
   // ===== END SSO SYNC =====
 
-  useEffect(() => {
-    let unsubscribeProfile = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      // Clean up previous profile listener if any
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-        unsubscribeProfile = null;
+  // useEffect içindeki SSO sync kısmını değiştir:
+
+useEffect(() => {
+  let unsubscribeProfile = null;
+  const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    if (unsubscribeProfile) {
+      unsubscribeProfile();
+      unsubscribeProfile = null;
+    }
+
+    setCurrentUser(user);
+
+    if (user) {
+      // Check if user came from SSO
+      const tokenResult = await user.getIdTokenResult();
+      const isSSO = tokenResult.claims?.sso === true;
+      const isNewUser = tokenResult.claims?.isNewUser === true;
+
+      // ⚠️ SADECE YENİ SSO KULLANICILARI İÇİN FIRESTORE SYNC YAP
+      if (isSSO && isNewUser) {
+        console.log('[AuthContext] New SSO user detected, syncing Firestore...');
+        await syncSSOUserProfile(user);
+      } else if (isSSO) {
+        console.log('[AuthContext] Existing SSO user, skipping profile sync');
       }
 
-      setCurrentUser(user);
+      // Listen to user profile
+      unsubscribeProfile = onSnapshot(
+        doc(db, 'users', user.uid),
+        (doc) => {
+          if (doc.exists()) {
+            setUserProfile({ id: doc.id, ...doc.data() });
+          }
+        },
+        (err) => console.error('[AuthContext] Profile listener error:', err)
+      );
 
-      if (user) {
-        // ===== YENI: Check if user came from SSO =====
-        // SSO users will have 'sso: true' in their token claims
-        const tokenResult = await user.getIdTokenResult();
-        const isSSO = tokenResult.claims?.sso === true;
+      updatePresence(user.uid).catch(() => {});
+      setLoading(false);
+    } else {
+      setUserProfile(null);
+      setLoading(false);
+    }
+  });
 
-        if (isSSO) {
-          console.log('[AuthContext] SSO user detected, syncing profile...');
-          await syncSSOUserProfile(user);
-        }
-        // ===== END SSO CHECK =====
-
-        // Listen to user profile
-        unsubscribeProfile = onSnapshot(
-          doc(db, 'users', user.uid),
-          (doc) => {
-            if (doc.exists()) {
-              setUserProfile({ id: doc.id, ...doc.data() });
-            }
-          },
-          (err) => console.error('[AuthContext] Profile listener error:', err)
-        );
-
-        // Update presence immediately
-        updatePresence(user.uid).catch(() => {});
-        
-        setLoading(false);
-      } else {
-        setUserProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeProfile) unsubscribeProfile();
-    };
-  }, []);
+  return () => {
+    unsubscribeAuth();
+    if (unsubscribeProfile) unsubscribeProfile();
+  };
+}, []);
 
   const register = async (email, password, displayName) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);

@@ -23,75 +23,63 @@ function AuthRouter() {
   const [authView, setAuthView] = useState('login');
 
   // Handle SSO login from URL parameter
-  useEffect(() => {
-    const handleSSO = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const ssoCode = urlParams.get('sso_code');
+  // SSO akışı kısmını bulun ve değiştirin (yaklaşık 27-85. satırlar arası)
 
-      // If processing stopped and user logged in, we're done
-      if (isSSOProcessing && currentUser && !ssoCode) {
+useEffect(() => {
+  const handleSSO = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ssoCode = urlParams.get('sso_code');
+
+    // If processing stopped and user logged in, we're done
+    if (isSSOProcessing && currentUser && !ssoCode) {
+      setIsSSOProcessing(false);
+      return;
+    }
+
+    if (ssoCode) {
+      if (currentUser) {
+        // Already logged in, clear param
+        window.history.replaceState({}, document.title, window.location.pathname);
         setIsSSOProcessing(false);
         return;
       }
 
-      if (ssoCode) {
-        if (currentUser) {
-          // Already logged in, clear param
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setIsSSOProcessing(false);
-          return;
-        }
-
-        console.log('🔐 SSO Code detected, exchanging...');
-        setIsSSOProcessing(true);
+      console.log('🔐 SSO Code detected, exchanging...');
+      setIsSSOProcessing(true);
+      
+      try {
+        // Clear query param immediately
+        window.history.replaceState({}, document.title, window.location.pathname);
         
-        try {
-          // Clear query param immediately
-          window.history.replaceState({}, document.title, window.location.pathname);
-          
-          const API_BASE = 'https://lumobuild.vercel.app'; 
-          
-          const response = await fetch(`${API_BASE}/api/sso/exchange`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: ssoCode })
-          });
+        const API_BASE = 'https://lumobuild.vercel.app'; 
+        
+        const response = await fetch(`${API_BASE}/api/sso/exchange`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: ssoCode })
+        });
 
-          const data = await response.json();
-          if (!data.success) throw new Error(data.error || 'Exchange failed');
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Exchange failed');
 
-          console.log('✅ SSO Exchange successful');
-          console.log('Is new user?', data.isNewUser);
+        console.log('✅ SSO Exchange successful');
+        console.log('Is new user?', data.isNewUser);
 
-          // ⚠️ DEĞİŞİKLİK: updateProfile SADECE YENİ KULLANICILAR İÇİN
-          if (data.isNewUser && data.user && (data.user.displayName || data.user.photoURL)) {
-            console.log('🔄 New user - updating Firebase Auth profile...');
-            
-            const userCredential = await signInWithCustomToken(auth, data.customToken);
-            
-            const { updateProfile } = await import('firebase/auth');
-            await updateProfile(userCredential.user, {
-              displayName: data.user.displayName || null,
-              photoURL: data.user.photoURL || null
-            });
-            
-            console.log('✅ New user profile set');
-          } else {
-            // Mevcut kullanıcı - sadece giriş yap, profil güncelleme
-            console.log('👤 Existing user - signing in without profile update');
-            await signInWithCustomToken(auth, data.customToken);
-          }
-          
-        } catch (err) {
-          console.error('❌ SSO Error:', err);
-          alert('SSO Login Failed: ' + err.message);
-          setIsSSOProcessing(false);
-        }
+        // ⚠️ DEĞİŞİKLİK: Sadece signInWithCustomToken yeterli
+        // Backend (exchange.js) zaten Firestore'u halletti
+        await signInWithCustomToken(auth, data.customToken);
+        console.log('✅ User signed in successfully');
+        
+      } catch (err) {
+        console.error('❌ SSO Error:', err);
+        alert('SSO Login Failed: ' + err.message);
+        setIsSSOProcessing(false);
       }
-    };
+    }
+  };
 
-    handleSSO();
-  }, [currentUser, isSSOProcessing]);
+  handleSSO();
+}, [currentUser, isSSOProcessing]);
 
   if (loading || isSSOProcessing) {
     return (

@@ -22,7 +22,6 @@ if (!admin.apps.length) {
 }
 
 export default async function handler(req, res) {
-  // CORS Configuration
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -65,31 +64,69 @@ export default async function handler(req, res) {
       return data;
     });
 
-    console.log(`[EXCHANGE] Code for ${result.email}`);
+    console.log(`[EXCHANGE] Code for ${result.email}, isNewUser: ${result.isNewUser}`);
 
-    // ⚠️ SADECE YENİ KULLANICILAR İÇİN PROFİL SYNC YAP
-    if (result.isNewUser) {
-      console.log('[EXCHANGE] New user detected, syncing profile...');
+    // ⚠️ KRİTİK: FIRESTORE'A KULLANICI KAYDI
+    const userDocRef = db.collection('users').doc(result.uid);
+    const userDoc = await userDocRef.get();
+
+    if (result.isNewUser || !userDoc.exists || !userDoc.data()?.email) {
+      console.log('[EXCHANGE] Creating/repairing Firestore profile...');
       
-      try {
+      // Benzersiz displayName kontrolü
+      let uniqueDisplayName = result.displayName;
+      const usersSnapshot = await db.collection('users')
+        .where('displayName', '==', result.displayName)
+        .get();
+      
+      let nameTaken = false;
+      usersSnapshot.forEach(doc => {
+        if (doc.id !== result.uid) nameTaken = true;
+      });
+
+      if (nameTaken) {
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        uniqueDisplayName = `${result.displayName}#${randomSuffix}`;
+      }
+
+      // Firestore'a tam profil kaydet
+      await userDocRef.set({
+        displayName: uniqueDisplayName,
+        email: result.email,
+        photoUrl: result.photoURL,
+        role: userDoc.exists ? (userDoc.data()?.role || 'member') : 'member',
+        createdAt: userDoc.exists ? userDoc.data()?.createdAt : admin.firestore.FieldValue.serverTimestamp(),
+        isOnline: true,
+        lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+        isUsernameSet: true,
+        servers: userDoc.exists ? (userDoc.data()?.servers || []) : []
+      }, { merge: true });
+
+      console.log('[EXCHANGE] ✅ Firestore profile created:', uniqueDisplayName);
+
+      // Firebase Auth'u güncelle
+      if (result.isNewUser) {
         await admin.auth().updateUser(result.uid, {
-          displayName: result.displayName,
+          displayName: uniqueDisplayName,
           photoURL: result.photoURL,
           emailVerified: true
         });
-        console.log('[EXCHANGE] ✅ New user profile synced');
-      } catch (error) {
-        console.error('[EXCHANGE] Profile sync error:', error);
+        console.log('[EXCHANGE] ✅ Firebase Auth profile updated');
       }
     } else {
-      console.log('[EXCHANGE] Existing user, skipping profile update');
+      // Mevcut kullanıcı - sadece presence güncelle
+      console.log('[EXCHANGE] Existing user, updating presence...');
+      await userDocRef.set({
+        isOnline: true,
+        lastSeen: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
     }
 
     // Create Custom Token
     const customToken = await admin.auth().createCustomToken(result.uid, {
       sso: true,
       source: 'sso_code_flow',
-      isNewUser: result.isNewUser // ← Frontend'e bilgi ver
+      isNewUser: result.isNewUser
     });
 
     return res.status(200).json({ 
@@ -101,7 +138,7 @@ export default async function handler(req, res) {
         photoURL: result.photoURL,
         uid: result.uid
       },
-      isNewUser: result.isNewUser // ← Frontend'e bilgi ver
+      isNewUser: result.isNewUser
     });
 
   } catch (error) {

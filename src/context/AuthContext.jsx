@@ -9,7 +9,8 @@ import {
   sendEmailVerification,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithCredential
+  signInWithCredential,
+  updateProfile // ← EKLENDI (SSO için)
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
@@ -43,6 +44,107 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ===== YENI: SSO USER PROFILE SYNC =====
+  // When a user signs in via SSO (signInWithCustomToken),
+  // we need to sync their profile to Firestore
+  const syncSSOUserProfile = async (user) => {
+    if (!user) return;
+
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      // Get name and photo from Firebase Auth profile
+      // (These were set by exchange.js after custom token sign-in)
+      const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+      const photoUrl = user.photoURL || null;
+      const email = user.email;
+
+      console.log('[SSO Sync] User data:', { email, displayName, photoUrl });
+
+      // Check if profile is incomplete or new
+      const isIncomplete = !userDoc.exists() || !userDoc.data()?.email || !userDoc.data()?.role;
+
+      if (isIncomplete) {
+        console.log('[SSO Sync] Creating/repairing Firestore profile...');
+        
+        // Ensure unique displayName
+        let uniqueDisplayName = displayName;
+        
+        if (displayName) {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('displayName', '==', displayName));
+          const snapshot = await getDocs(q);
+          
+          let taken = false;
+          snapshot.forEach(doc => {
+            if (doc.id !== user.uid) taken = true;
+          });
+
+          if (taken) {
+            const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+            uniqueDisplayName = `${displayName}#${randomSuffix}`;
+          }
+        }
+
+        // Create complete profile
+        await setDoc(userDocRef, {
+          displayName: uniqueDisplayName,
+          email: email,
+          photoUrl: photoUrl,
+          role: 'member',
+          createdAt: userDoc.data()?.createdAt || serverTimestamp(),
+          isOnline: true,
+          lastSeen: serverTimestamp(),
+          isUsernameSet: true,
+          servers: userDoc.data()?.servers || []
+        }, { merge: true });
+
+        console.log('[SSO Sync] ✅ Firestore profile created:', uniqueDisplayName);
+
+      } else {
+        // Existing user - just update presence and photo if changed
+        console.log('[SSO Sync] Updating existing user...');
+        
+        const updates = {
+          isOnline: true,
+          lastSeen: serverTimestamp()
+        };
+
+        // Update photo/name if they changed (from mobile app sync)
+        if (photoUrl && photoUrl !== userDoc.data()?.photoUrl) {
+          updates.photoUrl = photoUrl;
+        }
+        
+        if (displayName && displayName !== userDoc.data()?.displayName) {
+          // Only update if not taken
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('displayName', '==', displayName));
+          const snapshot = await getDocs(q);
+          let taken = false;
+          snapshot.forEach(doc => {
+            if (doc.id !== user.uid) taken = true;
+          });
+          if (!taken) {
+            updates.displayName = displayName;
+          }
+        }
+
+        // Auto-fix missing isUsernameSet flag
+        if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
+          updates.isUsernameSet = true;
+        }
+
+        await setDoc(userDocRef, updates, { merge: true });
+        console.log('[SSO Sync] ✅ Profile updated');
+      }
+
+    } catch (error) {
+      console.error('[SSO Sync] Error:', error);
+    }
+  };
+  // ===== END SSO SYNC =====
+
   useEffect(() => {
     let unsubscribeProfile = null;
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
@@ -55,6 +157,17 @@ export const AuthProvider = ({ children }) => {
       setCurrentUser(user);
 
       if (user) {
+        // ===== YENI: Check if user came from SSO =====
+        // SSO users will have 'sso: true' in their token claims
+        const tokenResult = await user.getIdTokenResult();
+        const isSSO = tokenResult.claims?.sso === true;
+
+        if (isSSO) {
+          console.log('[AuthContext] SSO user detected, syncing profile...');
+          await syncSSOUserProfile(user);
+        }
+        // ===== END SSO CHECK =====
+
         // Listen to user profile
         unsubscribeProfile = onSnapshot(
           doc(db, 'users', user.uid),
@@ -129,7 +242,6 @@ export const AuthProvider = ({ children }) => {
       try {
         await updatePresence(currentUser.uid, false);
       } catch (err) {
-        // This fails often on logout because the token is invalidated, which is fine
         console.log('[AuthContext] Final presence update skipped or failed during logout');
       }
     }
@@ -141,13 +253,11 @@ export const AuthProvider = ({ children }) => {
     
     try {
       if (Capacitor.isNativePlatform()) {
-        // Native mobile logic...
         console.log('[GoogleAuth] Starting native sign-in...');
         const googleUser = await GoogleAuth.signIn();
         const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
         userCredential = await signInWithCredential(auth, credential);
       } else {
-        // Web logic...
         const provider = new GoogleAuthProvider();
         userCredential = await signInWithPopup(auth, provider);
       }
@@ -156,9 +266,6 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      // Self-Healing Logic:
-      // Treat as NEW if doc doesn't exist OR if it's missing critical fields (like email).
-      // This repairs "broken" accounts that only have { isOnline: true }
       const isIncomplete = !userDoc.exists() || !userDoc.data()?.email || !userDoc.data()?.role;
 
       if (isIncomplete) {
@@ -166,14 +273,8 @@ export const AuthProvider = ({ children }) => {
         
         let uniqueDisplayName = userDoc.data()?.displayName || user.displayName;
         
-        // Ensure uniqueness only if we don't already have a valid name in DB
-        // If the DB has a name, we assume it was already uniqueness-checked (or we keep it)
-        // But if it's a repair, we might want to check again. 
-        // Let's stick to: If we are generating a name from Google Auth, check uniqueness.
-        
         if (!uniqueDisplayName || uniqueDisplayName === user.displayName) {
              if (uniqueDisplayName) {
-                // Check if taken
                 const usersRef = collection(db, 'users');
                 const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
                 const snapshot = await getDocs(q);
@@ -192,29 +293,26 @@ export const AuthProvider = ({ children }) => {
             }
         }
 
-        // Create/Repair Full Profile
         await setDoc(userDocRef, {
           displayName: uniqueDisplayName,
           email: user.email,
           photoUrl: user.photoURL,
           role: 'member',
-          createdAt: userDoc.data()?.createdAt || serverTimestamp(), // Keep original createdAt if exists
+          createdAt: userDoc.data()?.createdAt || serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
           isUsernameSet: true,
-          servers: userDoc.data()?.servers || [] // Keep existing servers or init empty
+          servers: userDoc.data()?.servers || []
         }, { merge: true });
         
         console.log('User profile created/repaired:', uniqueDisplayName);
 
       } else {
-        // Healthy User Update
         const updates = {
            isOnline: true,
            lastSeen: serverTimestamp()
         };
         
-        // Auto-fix missing isUsernameSet flag for legacy users
         if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
           updates.isUsernameSet = true;
         }
@@ -240,7 +338,6 @@ export const AuthProvider = ({ children }) => {
           throw new Error('No user currently signed in.');
       }
 
-      // If missing email, try to reload to get latest state
       if (!user.email) {
           await user.reload();
           user = auth.currentUser;

@@ -19,43 +19,57 @@ function AuthRouter() {
   const [authView, setAuthView] = useState('login');
 
   // Handle SSO login from URL parameter (SECURE FLOW)
-  useEffect(() => {
-    const handleSSO = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const ssoCode = urlParams.get('sso_code');
+useEffect(() => {
+  const handleSSO = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ssoCode = urlParams.get('sso_code');
 
-      if (ssoCode && !currentUser) {
-        console.log('🔐 SSO Code detected, exchanging...');
+    if (ssoCode && !currentUser) {
+      console.log('🔐 SSO Code detected, exchanging...');
+      
+      try {
+        // Clear query param immediately
+        window.history.replaceState({}, document.title, window.location.pathname);
         
-        try {
-          // Clear query param immediately
-          window.history.replaceState({}, document.title, window.location.pathname);
+        const API_BASE = 'https://lumobuild.vercel.app'; 
+        
+        const response = await fetch(`${API_BASE}/api/sso/exchange`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: ssoCode })
+        });
+
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error || 'Exchange failed');
+
+        console.log('✅ SSO Exchange successful:', data.user);
+
+        // 1. Sign in with custom token
+        const userCredential = await signInWithCustomToken(auth, data.customToken);
+        
+        // 2. CRITICAL: Update Firebase Auth profile with data from SSO
+        // This ensures displayName and photoURL are set in Firebase Auth
+        if (data.user && (data.user.displayName || data.user.photoURL)) {
+          console.log('🔄 Updating Firebase profile with SSO data...');
           
-          // Call Backend to exchange code for token
-          // Using production URL since local Vite doesn't proxy /api by default
-          const API_BASE = 'https://lumobuild.vercel.app'; 
-          
-          const response = await fetch(`${API_BASE}/api/sso/exchange`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: ssoCode })
+          const { updateProfile } = await import('firebase/auth');
+          await updateProfile(userCredential.user, {
+            displayName: data.user.displayName || null,
+            photoURL: data.user.photoURL || null
           });
-
-          const data = await response.json();
-          if (!data.success) throw new Error(data.error || 'Exchange failed');
-
-          console.log('✅ SSO Exchange successful. Logging in...');
-          await signInWithCustomToken(auth, data.customToken);
           
-        } catch (err) {
-          console.error('❌ SSO Error:', err);
-          alert('SSO Login Failed: ' + err.message);
+          console.log('✅ Profile updated successfully');
         }
+        
+      } catch (err) {
+        console.error('❌ SSO Error:', err);
+        alert('SSO Login Failed: ' + err.message);
       }
-    };
+    }
+  };
 
-    handleSSO();
-  }, [currentUser]);
+  handleSSO();
+}, [currentUser]);
 
 
 

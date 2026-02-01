@@ -45,7 +45,7 @@ export default async function handler(req, res) {
     const db = admin.firestore();
     const codeRef = db.collection('sso_codes').doc(code);
 
-    // Run as a Transaction to ensure atomic check-and-delete (One-Time Use)
+    // Run as a Transaction
     const result = await db.runTransaction(async (t) => {
       const doc = await t.get(codeRef);
 
@@ -56,42 +56,68 @@ export default async function handler(req, res) {
       const data = doc.data();
       const now = admin.firestore.Timestamp.now();
 
-      // Check Expiration
       if (data.expiresAt < now) {
-        // Cleanup expired code
         t.delete(codeRef);
         throw new Error('EXPIRED_CODE');
       }
 
-      // Valid! Delete immediately to prevent replay
       t.delete(codeRef);
-
       return data;
     });
 
-    // Code is valid and burned. Now mint the token.
-    console.log(`Exchanging code for user ${result.email}`);
+    console.log(`Exchanging code for user ${result.email} (${result.displayName})`);
 
-    // Create a Custom Token for this UID
+    // CRITICAL FIX: Ensure user profile is complete BEFORE creating custom token
+    try {
+      const userRecord = await admin.auth().getUser(result.uid);
+      
+      // If displayName or photoURL missing, update NOW
+      const needsProfileUpdate = 
+        (result.displayName && !userRecord.displayName) ||
+        (result.photoURL && !userRecord.photoURL);
+
+      if (needsProfileUpdate) {
+        console.log('Syncing user profile before token creation...');
+        await admin.auth().updateUser(result.uid, {
+          displayName: result.displayName,
+          photoURL: result.photoURL,
+          emailVerified: true
+        });
+        console.log('Profile synced successfully');
+      }
+    } catch (error) {
+      console.error('Profile sync error:', error);
+      // Continue anyway - custom token will still work
+    }
+
+    // Create Custom Token with claims
     const customToken = await admin.auth().createCustomToken(result.uid, {
-        sso: true,
-        source: 'sso_code_flow'
+      sso: true,
+      source: 'sso_code_flow',
+      email: result.email,           // ← EKLENDI
+      displayName: result.displayName, // ← EKLENDI
+      photoURL: result.photoURL        // ← EKLENDI
     });
 
     return res.status(200).json({ 
       success: true, 
       customToken: customToken,
-      email: result.email
+      user: {
+        email: result.email,
+        displayName: result.displayName,
+        photoURL: result.photoURL,
+        uid: result.uid
+      }
     });
 
   } catch (error) {
     console.error('SSO Exchange Error:', error);
     
     if (error.message === 'INVALID_CODE') {
-        return res.status(400).json({ error: 'Invalid or used code' });
+      return res.status(400).json({ error: 'Invalid or used code' });
     }
     if (error.message === 'EXPIRED_CODE') {
-        return res.status(400).json({ error: 'Code expired' });
+      return res.status(400).json({ error: 'Code expired' });
     }
 
     return res.status(500).json({ 

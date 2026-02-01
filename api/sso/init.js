@@ -51,57 +51,99 @@ export default async function handler(req, res) {
     const name = decodedToken.name || decodedToken.email?.split('@')[0] || 'User';
     const picture = decodedToken.picture || null;
 
-    console.log('Decoded Token Info:', { uid, email, name, picture });
+    console.log('[INIT] ===== SSO INIT START =====');
+    console.log('[INIT] UID:', uid);
+    console.log('[INIT] Email:', email);
+    console.log('[INIT] Name:', name);
+    console.log('[INIT] Picture:', picture);
 
-    // 2. Ensure user exists in Lumo Firebase with Email provider
+    // 2. Check if user exists
     let userRecord;
+    let userExists = false;
+    
     try {
-      // Try to get existing user
       userRecord = await admin.auth().getUser(uid);
-      console.log('Existing user found:', userRecord.email);
-
-      // Update profile if name/picture exists but not set
-      const needsUpdate = 
-        (name && !userRecord.displayName) || 
-        (picture && !userRecord.photoURL);
-
-      if (needsUpdate) {
-        console.log('Updating user profile...');
-        await admin.auth().updateUser(uid, {
-          displayName: name,
-          photoURL: picture,
-          emailVerified: true
-        });
-        console.log('User profile updated successfully');
-      }
+      userExists = true;
+      console.log('[INIT] ✅ User already exists');
+      console.log('[INIT] Current displayName:', userRecord.displayName);
+      console.log('[INIT] Current photoURL:', userRecord.photoURL);
+      console.log('[INIT] Current email:', userRecord.email);
+      console.log('[INIT] Providers:', userRecord.providerData.map(p => p.providerId).join(', '));
 
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
-        // User doesn't exist - CREATE with Email/Password provider
-        console.log('Creating new user with Email provider...');
-        
-        // Generate random password (user will never use it, only SSO login)
-        const randomPassword = crypto.randomBytes(32).toString('hex');
-        
-        userRecord = await admin.auth().createUser({
-          uid: uid,
-          email: email,
-          password: randomPassword, // This creates Email/Password provider
-          displayName: name,
-          photoURL: picture,
-          emailVerified: true
-        });
-        
-        console.log('New user created with Email provider');
+        console.log('[INIT] ⚠️ User does not exist, will create...');
       } else {
+        console.error('[INIT] ❌ Error checking user:', error);
         throw error;
       }
     }
 
-    // 3. Generate SSO Code
-    const code = crypto.randomBytes(16).toString('hex');
+    // 3. Create or Update User
+    if (!userExists) {
+      // CREATE NEW USER
+      console.log('[INIT] Creating new user...');
+      
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      
+      try {
+        userRecord = await admin.auth().createUser({
+          uid: uid,
+          email: email,
+          password: randomPassword,
+          displayName: name,
+          photoURL: picture,
+          emailVerified: true
+        });
+        
+        console.log('[INIT] ✅ User created successfully');
+        console.log('[INIT] Created UID:', userRecord.uid);
+        console.log('[INIT] Created Email:', userRecord.email);
+        console.log('[INIT] Created DisplayName:', userRecord.displayName);
+        
+      } catch (createError) {
+        console.error('[INIT] ❌ CREATE USER FAILED:', createError);
+        console.error('[INIT] Error code:', createError.code);
+        console.error('[INIT] Error message:', createError.message);
+        throw createError;
+      }
+      
+    } else {
+      // UPDATE EXISTING USER
+      const needsUpdate = 
+        (name && !userRecord.displayName) || 
+        (picture && !userRecord.photoURL) ||
+        !userRecord.email;
 
-    // 4. Store in Firestore with user data
+      if (needsUpdate) {
+        console.log('[INIT] Updating user profile...');
+        
+        try {
+          await admin.auth().updateUser(uid, {
+            email: email || userRecord.email,
+            displayName: name || userRecord.displayName,
+            photoURL: picture || userRecord.photoURL,
+            emailVerified: true
+          });
+          
+          console.log('[INIT] ✅ User updated successfully');
+          
+        } catch (updateError) {
+          console.error('[INIT] ❌ UPDATE USER FAILED:', updateError);
+          console.error('[INIT] Error code:', updateError.code);
+          console.error('[INIT] Error message:', updateError.message);
+          // Don't throw - continue with code generation
+        }
+      } else {
+        console.log('[INIT] No update needed');
+      }
+    }
+
+    // 4. Generate SSO Code
+    const code = crypto.randomBytes(16).toString('hex');
+    console.log('[INIT] Generated SSO code:', code);
+
+    // 5. Store in Firestore
     const db = admin.firestore();
     const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 5 * 60 * 1000));
 
@@ -115,20 +157,32 @@ export default async function handler(req, res) {
       expiresAt: expiresAt
     });
 
-    console.log(`SSO Code generated for user ${email} (${name})`);
+    console.log('[INIT] ✅ SSO code stored in Firestore');
+    console.log('[INIT] ===== SSO INIT END =====');
 
-    // 5. Return the code
     return res.status(200).json({ 
       success: true, 
       code: code,
-      expiresIn: 300
+      expiresIn: 300,
+      debug: {
+        uid,
+        email,
+        name,
+        userExists
+      }
     });
 
   } catch (error) {
-    console.error('SSO Init Error:', error);
+    console.error('[INIT] ❌❌❌ FATAL ERROR ❌❌❌');
+    console.error('[INIT] Error:', error);
+    console.error('[INIT] Error code:', error.code);
+    console.error('[INIT] Error message:', error.message);
+    console.error('[INIT] Stack:', error.stack);
+    
     return res.status(500).json({ 
       error: 'Internal Server Error', 
-      details: error.message 
+      details: error.message,
+      code: error.code
     });
   }
 }

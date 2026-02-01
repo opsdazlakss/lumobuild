@@ -147,54 +147,43 @@ export const AuthProvider = ({ children }) => {
 
   // useEffect içindeki SSO sync kısmını değiştir:
 
-useEffect(() => {
-  let unsubscribeProfile = null;
-  const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-    if (unsubscribeProfile) {
-      unsubscribeProfile();
-      unsubscribeProfile = null;
-    }
-
-    setCurrentUser(user);
-
-    if (user) {
-      // Check if user came from SSO
-      const tokenResult = await user.getIdTokenResult();
-      const isSSO = tokenResult.claims?.sso === true;
-      const isNewUser = tokenResult.claims?.isNewUser === true;
-
-      // ⚠️ SADECE YENİ SSO KULLANICILARI İÇİN FIRESTORE SYNC YAP
-      if (isSSO && isNewUser) {
-        console.log('[AuthContext] New SSO user detected, syncing Firestore...');
-        await syncSSOUserProfile(user);
-      } else if (isSSO) {
-        console.log('[AuthContext] Existing SSO user, skipping profile sync');
+  useEffect(() => {
+    let unsubscribeProfile = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
       }
 
-      // Listen to user profile
-      unsubscribeProfile = onSnapshot(
-        doc(db, 'users', user.uid),
-        (doc) => {
-          if (doc.exists()) {
-            setUserProfile({ id: doc.id, ...doc.data() });
-          }
-        },
-        (err) => console.error('[AuthContext] Profile listener error:', err)
-      );
+      setCurrentUser(user);
 
-      updatePresence(user.uid).catch(() => {});
-      setLoading(false);
-    } else {
-      setUserProfile(null);
-      setLoading(false);
-    }
-  });
+      if (user) {
+        // ⚠️ SSO SYNC TAMAMEN KALDIRILDI - Backend halledecek
+        
+        // Listen to user profile
+        unsubscribeProfile = onSnapshot(
+          doc(db, 'users', user.uid),
+          (doc) => {
+            if (doc.exists()) {
+              setUserProfile({ id: doc.id, ...doc.data() });
+            }
+          },
+          (err) => console.error('[AuthContext] Profile listener error:', err)
+        );
 
-  return () => {
-    unsubscribeAuth();
-    if (unsubscribeProfile) unsubscribeProfile();
-  };
-}, []);
+        updatePresence(user.uid).catch(() => {});
+        setLoading(false);
+      } else {
+        setUserProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
+  }, []);
 
   const register = async (email, password, displayName) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);

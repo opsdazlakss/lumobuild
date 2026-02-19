@@ -96,6 +96,15 @@ export default async function handler(req, res) {
         }
       }
 
+      // ✅ SSO ile gelen yeni kullanıcıları otomatik olarak Meydan sunucusuna ekle
+      const DEFAULT_SSO_SERVER_ID = 'jOgYkJ4jrMvjr1bYXRkg';
+      const currentServers = existingData.servers || [];
+      
+      if (!currentServers.includes(DEFAULT_SSO_SERVER_ID)) {
+        console.log('[EXCHANGE] Adding SSO user to Meydan server...');
+        currentServers.push(DEFAULT_SSO_SERVER_ID);
+      }
+
       // ✅ Profil oluştur/onar — mevcut role ve servers KORUNUR
       await userDocRef.set({
         displayName: uniqueDisplayName,
@@ -106,10 +115,29 @@ export default async function handler(req, res) {
         isOnline: true,
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
         isUsernameSet: existingData.isUsernameSet !== undefined ? existingData.isUsernameSet : true,
-        servers: existingData.servers || []
+        servers: currentServers
       }, { merge: true });
 
       console.log('[EXCHANGE] ✅ Profile created/repaired:', uniqueDisplayName);
+
+      // ✅ Sunucunun members koleksiyonuna üye kaydı ekle (yoksa)
+      const memberRef = db.collection('servers').doc(DEFAULT_SSO_SERVER_ID).collection('members').doc(result.uid);
+      const memberDoc = await memberRef.get();
+      
+      if (!memberDoc.exists) {
+        await memberRef.set({
+          userId: result.uid,
+          joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+          role: 'member'
+        });
+        
+        // Sunucu üye sayısını artır
+        await db.collection('servers').doc(DEFAULT_SSO_SERVER_ID).update({
+          memberCount: admin.firestore.FieldValue.increment(1)
+        });
+        
+        console.log('[EXCHANGE] ✅ User added to Meydan server');
+      }
 
       // Firebase Auth güncelle (sadece yeni kullanıcılar için)
       if (!userDoc.exists) {

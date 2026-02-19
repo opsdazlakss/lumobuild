@@ -31,14 +31,22 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Update presence with isOnline flag
+  // Update presence - sadece MEVCUT dokümanları günceller, yeni oluşturmaz
   const updatePresence = async (userId, isOnline = true) => {
     if (!userId) return;
     try {
-      await setDoc(doc(db, 'users', userId), {
-        isOnline: isOnline,
-        lastSeen: serverTimestamp()
-      }, { merge: true });
+      const userDocRef = doc(db, 'users', userId);
+      const userDocSnap = await getDoc(userDocRef);
+      
+      // ✅ Sadece doküman varsa güncelle — yoksa oluşturma (profil oluşturmayı signInWithGoogle/exchange.js'e bırak)
+      if (userDocSnap.exists()) {
+        await setDoc(userDocRef, {
+          isOnline: isOnline,
+          lastSeen: serverTimestamp()
+        }, { merge: true });
+      } else {
+        console.log('[AuthContext] Skipping presence update - user doc does not exist yet for:', userId);
+      }
     } catch (err) {
       console.error('Presence update failed:', err);
     }
@@ -158,15 +166,13 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      // Profil eksikse oluştur/onar (updatePresence minimal doc oluşturmuş olabilir)
-      const existingData = userDoc.exists() ? userDoc.data() : {};
-      const isProfileIncomplete = !userDoc.exists() || !existingData.email || !existingData.displayName;
+      console.log('[Auth] UID:', user.uid, 'Doc exists:', userDoc.exists());
 
-      if (isProfileIncomplete) {
-        console.log('[Auth] Profile missing or incomplete. Creating/repairing...');
+      if (!userDoc.exists()) {
+        // Doküman hiç yok — farklı UID'de eski profil var mı kontrol et
+        console.log('[Auth] No Firestore doc. Checking for profile with same email...');
         
-        // ✅ Farklı UID'de aynı email ile profil var mı kontrol et (SSO/mobile UID uyumsuzluğu)
-        let migratedData = {};
+        let migratedData = null;
         if (user.email) {
           const usersRef = collection(db, 'users');
           const emailQuery = query(usersRef, where('email', '==', user.email));
@@ -174,62 +180,72 @@ export const AuthProvider = ({ children }) => {
           
           emailSnapshot.forEach(existingDoc => {
             if (existingDoc.id !== user.uid && existingDoc.data()?.displayName) {
-              console.log('[Auth] ⚠️ Found existing profile under different UID:', existingDoc.id);
+              console.log('[Auth] ⚠️ Found profile under different UID:', existingDoc.id);
               migratedData = existingDoc.data();
             }
           });
         }
 
-        // Öncelik: migratedData > existingData > varsayılan
-        const sourceData = Object.keys(migratedData).length > 0 ? migratedData : existingData;
+        const source = migratedData || {};
+        let uniqueDisplayName = source.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
         
-        // Benzersiz displayName (sadece yeni atanacaksa kontrol et)
-        let uniqueDisplayName = sourceData.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
-        
-        if (!sourceData.displayName) {
+        // Benzersizlik kontrolü (sadece yeni isim atanacaksa)
+        if (!source.displayName) {
           const usersRef = collection(db, 'users');
           const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
           const snapshot = await getDocs(q);
-          
           let taken = false;
-          snapshot.forEach(doc => {
-            if (doc.id !== user.uid) taken = true;
-          });
-
+          snapshot.forEach(d => { if (d.id !== user.uid) taken = true; });
           if (taken) {
-            const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
-            uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
+            uniqueDisplayName = `${uniqueDisplayName}#${Math.floor(1000 + Math.random() * 9000)}`;
           }
         }
 
-        // ✅ Profil oluştur/onar — mevcut veya migrate edilen role/servers KORUNUR
+        // ✅ Yeni profil oluştur — migrate edilen role/servers varsa kullan
         await setDoc(userDocRef, {
           displayName: uniqueDisplayName,
           email: user.email,
           photoUrl: user.photoURL,
-          role: sourceData.role || 'member',
-          createdAt: sourceData.createdAt || serverTimestamp(),
+          role: source.role || 'member',
+          createdAt: source.createdAt || serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
-          isUsernameSet: sourceData.isUsernameSet !== undefined ? sourceData.isUsernameSet : true,
-          servers: sourceData.servers || []
-        }, { merge: true });
+          isUsernameSet: source.isUsernameSet !== undefined ? source.isUsernameSet : true,
+          servers: source.servers || []
+        });
         
-        console.log('[Auth] ✅ Profile created/repaired:', uniqueDisplayName);
+        console.log('[Auth] ✅ New profile created:', uniqueDisplayName);
 
       } else {
-        // ✅ Tam profili olan mevcut kullanıcı — sadece presence güncelle
-        console.log('[Auth] Existing user login, updating presence only...');
+        // ✅ Doküman VAR — hiçbir koşulda role/servers/displayName'e DOKUNMA
+        console.log('[Auth] Doc exists. Updating presence only. Current data:', JSON.stringify({
+          displayName: userDoc.data()?.displayName,
+          role: userDoc.data()?.role,
+          servers: userDoc.data()?.servers?.length,
+          email: userDoc.data()?.email
+        }));
+        
         const updates = {
-           isOnline: true,
-           lastSeen: serverTimestamp()
+          isOnline: true,
+          lastSeen: serverTimestamp()
         };
         
-        if (existingData.isUsernameSet === undefined && existingData.displayName) {
+        // Sadece eksik temel alanları tamamla — ama ASLA üzerine yazma
+        if (!userDoc.data()?.email && user.email) {
+          updates.email = user.email;
+        }
+        if (!userDoc.data()?.displayName && user.displayName) {
+          updates.displayName = user.displayName;
+        }
+        if (!userDoc.data()?.role) {
+          updates.role = 'member';
+        }
+        if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
           updates.isUsernameSet = true;
         }
 
         await setDoc(userDocRef, updates, { merge: true });
+        console.log('[Auth] ✅ Presence updated. Fields written:', Object.keys(updates).join(', '));
       }
       
       return userCredential;

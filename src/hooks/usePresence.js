@@ -1,13 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 const HEARTBEAT_INTERVAL = 4 * 60 * 1000; // 4 minutes (Balanced for quota and stability)
 
 /**
  * usePresence hook - Sends periodic heartbeat updates to Firestore
- * to indicate the user is still active. Other clients calculate
- * online status by checking if lastSeen is within the last 5 minutes.
+ * to indicate the user is still active. Only updates EXISTING docs.
  */
 export const usePresence = (userId) => {
   const intervalRef = useRef(null);
@@ -17,10 +16,16 @@ export const usePresence = (userId) => {
 
     const updatePresence = async () => {
       try {
-        await setDoc(doc(db, 'users', userId), {
-          lastSeen: serverTimestamp(),
-          isOnline: true // Still set this for backwards compatibility
-        }, { merge: true });
+        const userDocRef = doc(db, 'users', userId);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        // ✅ Sadece doküman varsa güncelle — yoksa oluşturma
+        if (userDocSnap.exists()) {
+          await setDoc(userDocRef, {
+            lastSeen: serverTimestamp(),
+            isOnline: true
+          }, { merge: true });
+        }
       } catch (err) {
         console.error('Error updating presence:', err);
       }

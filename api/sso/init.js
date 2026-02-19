@@ -46,34 +46,34 @@ export default async function handler(req, res) {
 
     // 1. Verify the ID Token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const uid = decodedToken.uid;
+    let uid = decodedToken.uid;
     const email = decodedToken.email;
     const name = decodedToken.name || decodedToken.email?.split('@')[0] || 'User';
     const picture = decodedToken.picture || null;
 
     console.log('[INIT] Token Info:', { uid, email, name });
 
-    // 2. Check if user exists
+    // 2. Check if user exists (UID veya EMAIL ile ara)
     let userRecord;
     let isNewUser = false;
     
     try {
       userRecord = await admin.auth().getUser(uid);
-      console.log('[INIT] ✅ Existing user found');
+      console.log('[INIT] ✅ Existing user found by UID');
       
-      // ⚠️ SADECE EKSİK BİLGİLERİ TAMAMLA - OVERRIDE YAPMA!
+      // Eksik bilgileri tamamla
       const needsRepair = 
-        !userRecord.email ||  // Email yoksa ekle
-        !userRecord.displayName ||  // DisplayName yoksa ekle
-        (userRecord.providerData && userRecord.providerData.length === 0); // Provider yoksa ekle
+        !userRecord.email ||
+        !userRecord.displayName ||
+        (userRecord.providerData && userRecord.providerData.length === 0);
 
       if (needsRepair) {
         console.log('[INIT] ⚠️ User profile incomplete, repairing...');
         
         await admin.auth().updateUser(uid, {
-          email: userRecord.email || email, // Sadece yoksa set et
-          displayName: userRecord.displayName || name, // Sadece yoksa set et
-          photoURL: userRecord.photoURL || picture, // Sadece yoksa set et
+          email: userRecord.email || email,
+          displayName: userRecord.displayName || name,
+          photoURL: userRecord.photoURL || picture,
           emailVerified: true
         });
         
@@ -84,22 +84,38 @@ export default async function handler(req, res) {
 
     } catch (error) {
       if (error.code === 'auth/user-not-found') {
-        // YENİ KULLANICI - TAM PROFİL OLUŞTUR
-        console.log('[INIT] 🆕 New user, creating with full profile...');
-        isNewUser = true;
+        // UID bulunamadı — EMAIL ile ara (mobil Google sign-in farklı UID oluşturmuş olabilir)
+        console.log('[INIT] UID not found, checking by email...');
         
-        const randomPassword = crypto.randomBytes(32).toString('hex');
-        
-        userRecord = await admin.auth().createUser({
-          uid: uid,
-          email: email,
-          password: randomPassword,
-          displayName: name,
-          photoURL: picture,
-          emailVerified: true
-        });
-        
-        console.log('[INIT] ✅ New user created');
+        try {
+          userRecord = await admin.auth().getUserByEmail(email);
+          // ✅ Aynı email ile farklı UID'de kullanıcı bulundu — onun UID'sini kullan
+          uid = userRecord.uid;
+          isNewUser = false;
+          console.log('[INIT] ✅ Existing user found by EMAIL, using UID:', uid);
+          
+        } catch (emailErr) {
+          if (emailErr.code === 'auth/user-not-found') {
+            // Gerçekten yeni kullanıcı — oluştur
+            console.log('[INIT] 🆕 New user, creating with full profile...');
+            isNewUser = true;
+            
+            const randomPassword = crypto.randomBytes(32).toString('hex');
+            
+            userRecord = await admin.auth().createUser({
+              uid: uid,
+              email: email,
+              password: randomPassword,
+              displayName: name,
+              photoURL: picture,
+              emailVerified: true
+            });
+            
+            console.log('[INIT] ✅ New user created');
+          } else {
+            throw emailErr;
+          }
+        }
       } else {
         throw error;
       }

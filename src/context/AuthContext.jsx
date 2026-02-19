@@ -165,10 +165,28 @@ export const AuthProvider = ({ children }) => {
       if (isProfileIncomplete) {
         console.log('[Auth] Profile missing or incomplete. Creating/repairing...');
         
-        // Benzersiz displayName (sadece yeni atanacaksa kontrol et)
-        let uniqueDisplayName = existingData.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
+        // ✅ Farklı UID'de aynı email ile profil var mı kontrol et (SSO/mobile UID uyumsuzluğu)
+        let migratedData = {};
+        if (user.email) {
+          const usersRef = collection(db, 'users');
+          const emailQuery = query(usersRef, where('email', '==', user.email));
+          const emailSnapshot = await getDocs(emailQuery);
+          
+          emailSnapshot.forEach(existingDoc => {
+            if (existingDoc.id !== user.uid && existingDoc.data()?.displayName) {
+              console.log('[Auth] ⚠️ Found existing profile under different UID:', existingDoc.id);
+              migratedData = existingDoc.data();
+            }
+          });
+        }
+
+        // Öncelik: migratedData > existingData > varsayılan
+        const sourceData = Object.keys(migratedData).length > 0 ? migratedData : existingData;
         
-        if (!existingData.displayName) {
+        // Benzersiz displayName (sadece yeni atanacaksa kontrol et)
+        let uniqueDisplayName = sourceData.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        if (!sourceData.displayName) {
           const usersRef = collection(db, 'users');
           const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
           const snapshot = await getDocs(q);
@@ -184,17 +202,17 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // ✅ Profil oluştur/onar — mevcut role ve servers KORUNUR
+        // ✅ Profil oluştur/onar — mevcut veya migrate edilen role/servers KORUNUR
         await setDoc(userDocRef, {
           displayName: uniqueDisplayName,
           email: user.email,
           photoUrl: user.photoURL,
-          role: existingData.role || 'member',
-          createdAt: existingData.createdAt || serverTimestamp(),
+          role: sourceData.role || 'member',
+          createdAt: sourceData.createdAt || serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
-          isUsernameSet: existingData.isUsernameSet !== undefined ? existingData.isUsernameSet : true,
-          servers: existingData.servers || []
+          isUsernameSet: sourceData.isUsernameSet !== undefined ? sourceData.isUsernameSet : true,
+          servers: sourceData.servers || []
         }, { merge: true });
         
         console.log('[Auth] ✅ Profile created/repaired:', uniqueDisplayName);

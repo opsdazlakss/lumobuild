@@ -112,6 +112,24 @@ export default async function handler(req, res) {
     const db = admin.firestore();
     const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 5 * 60 * 1000));
 
+    // 🧹 Süresi dolmuş tüm SSO kodlarını temizle
+    try {
+      const now = admin.firestore.Timestamp.now();
+      const expiredCodes = await db.collection('sso_codes')
+        .where('expiresAt', '<', now)
+        .get();
+      
+      if (!expiredCodes.empty) {
+        const batch = db.batch();
+        expiredCodes.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`[INIT] 🧹 Cleaned up ${expiredCodes.size} expired SSO codes`);
+      }
+    } catch (cleanupErr) {
+      // Temizleme hatası ana akışı engellemez
+      console.warn('[INIT] Cleanup warning:', cleanupErr.message);
+    }
+
     await db.collection('sso_codes').doc(code).set({
       uid: uid,
       email: email,

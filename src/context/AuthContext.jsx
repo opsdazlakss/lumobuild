@@ -44,108 +44,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ===== YENI: SSO USER PROFILE SYNC =====
-  // When a user signs in via SSO (signInWithCustomToken),
-  // we need to sync their profile to Firestore
-  const syncSSOUserProfile = async (user) => {
-    if (!user) return;
-
-    try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      // Get name and photo from Firebase Auth profile
-      // (These were set by exchange.js after custom token sign-in)
-      const displayName = user.displayName || user.email?.split('@')[0] || 'User';
-      const photoUrl = user.photoURL || null;
-      const email = user.email;
-
-      console.log('[SSO Sync] User data:', { email, displayName, photoUrl });
-
-      // Check if profile is incomplete or new
-      const isIncomplete = !userDoc.exists() || !userDoc.data()?.email || !userDoc.data()?.role;
-
-      if (isIncomplete) {
-        console.log('[SSO Sync] Creating/repairing Firestore profile...');
-        
-        // Ensure unique displayName
-        let uniqueDisplayName = displayName;
-        
-        if (displayName) {
-          const usersRef = collection(db, 'users');
-          const q = query(usersRef, where('displayName', '==', displayName));
-          const snapshot = await getDocs(q);
-          
-          let taken = false;
-          snapshot.forEach(doc => {
-            if (doc.id !== user.uid) taken = true;
-          });
-
-          if (taken) {
-            const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-            uniqueDisplayName = `${displayName}#${randomSuffix}`;
-          }
-        }
-
-        // Create complete profile
-        await setDoc(userDocRef, {
-          displayName: uniqueDisplayName,
-          email: email,
-          photoUrl: photoUrl,
-          role: 'member',
-          createdAt: userDoc.data()?.createdAt || serverTimestamp(),
-          isOnline: true,
-          lastSeen: serverTimestamp(),
-          isUsernameSet: true,
-          servers: userDoc.data()?.servers || []
-        }, { merge: true });
-
-        console.log('[SSO Sync] ✅ Firestore profile created:', uniqueDisplayName);
-
-      } else {
-        // Existing user - just update presence and photo if changed
-        console.log('[SSO Sync] Updating existing user...');
-        
-        const updates = {
-          isOnline: true,
-          lastSeen: serverTimestamp()
-        };
-
-        // Update photo/name if they changed (from mobile app sync)
-        if (photoUrl && photoUrl !== userDoc.data()?.photoUrl) {
-          updates.photoUrl = photoUrl;
-        }
-        
-        if (displayName && displayName !== userDoc.data()?.displayName) {
-          // Only update if not taken
-          const usersRef = collection(db, 'users');
-          const q = query(usersRef, where('displayName', '==', displayName));
-          const snapshot = await getDocs(q);
-          let taken = false;
-          snapshot.forEach(doc => {
-            if (doc.id !== user.uid) taken = true;
-          });
-          if (!taken) {
-            updates.displayName = displayName;
-          }
-        }
-
-        // Auto-fix missing isUsernameSet flag
-        if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
-          updates.isUsernameSet = true;
-        }
-
-        await setDoc(userDocRef, updates, { merge: true });
-        console.log('[SSO Sync] ✅ Profile updated');
-      }
-
-    } catch (error) {
-      console.error('[SSO Sync] Error:', error);
-    }
-  };
-  // ===== END SSO SYNC =====
-
-  // useEffect içindeki SSO sync kısmını değiştir:
+  // useEffect: Auth state listener
 
   useEffect(() => {
     let unsubscribeProfile = null;
@@ -203,7 +102,7 @@ export const AuthProvider = ({ children }) => {
       isOnline: true,
       lastSeen: serverTimestamp(),
       isUsernameSet: true
-    });
+    }, { merge: true });
 
     return userCredential;
   };
@@ -226,7 +125,10 @@ export const AuthProvider = ({ children }) => {
     return userCredential;
   };
 
+  const isSSO = sessionStorage.getItem('loginMethod') === 'sso';
+
   const logout = async () => {
+    sessionStorage.removeItem('loginMethod');
     if (currentUser) {
       // Set offline before logout
       try {
@@ -256,31 +158,25 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      const isIncomplete = !userDoc.exists() || !userDoc.data()?.email || !userDoc.data()?.role;
-
-      if (isIncomplete) {
-        console.log('[Auth] Profile incomplete or new. Creating/Repairing...');
+      if (!userDoc.exists()) {
+        // ✅ Sadece gerçekten YENİ kullanıcı için profil oluştur
+        console.log('[Auth] New user detected. Creating profile...');
         
-        let uniqueDisplayName = userDoc.data()?.displayName || user.displayName;
+        let uniqueDisplayName = user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
         
-        if (!uniqueDisplayName || uniqueDisplayName === user.displayName) {
-             if (uniqueDisplayName) {
-                const usersRef = collection(db, 'users');
-                const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
-                const snapshot = await getDocs(q);
-                
-                let taken = false;
-                snapshot.forEach(doc => {
-                    if (doc.id !== user.uid) taken = true;
-                });
+        // Benzersizlik kontrolü
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
+        const snapshot = await getDocs(q);
+        
+        let taken = false;
+        snapshot.forEach(doc => {
+          if (doc.id !== user.uid) taken = true;
+        });
 
-                if (taken) {
-                    const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
-                    uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
-                }
-            } else {
-                 uniqueDisplayName = `User#${Math.floor(1000 + Math.random() * 9000)}`;
-            }
+        if (taken) {
+          const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
+          uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
         }
 
         await setDoc(userDocRef, {
@@ -288,16 +184,18 @@ export const AuthProvider = ({ children }) => {
           email: user.email,
           photoUrl: user.photoURL,
           role: 'member',
-          createdAt: userDoc.data()?.createdAt || serverTimestamp(),
+          createdAt: serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
           isUsernameSet: true,
-          servers: userDoc.data()?.servers || []
-        }, { merge: true });
+          servers: []
+        });
         
-        console.log('User profile created/repaired:', uniqueDisplayName);
+        console.log('[Auth] ✅ New user profile created:', uniqueDisplayName);
 
       } else {
+        // ✅ Mevcut kullanıcı - SADECE presence güncelle, role/servers/displayName'e DOKUNMA
+        console.log('[Auth] Existing user login, updating presence only...');
         const updates = {
            isOnline: true,
            lastSeen: serverTimestamp()
@@ -343,6 +241,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     currentUser,
     userProfile,
+    isSSO,
     register,
     login,
     logout,

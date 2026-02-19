@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { FaHashtag } from 'react-icons/fa';
 import { MdLock } from 'react-icons/md';
 import { MdSettings, MdAdminPanelSettings, MdLogout, MdPersonAdd } from 'react-icons/md';
@@ -13,6 +14,7 @@ import { VoiceChannelSection } from '../../voiceChannel/components/VoiceChannelS
 import { VoiceChannelBar } from '../../voiceChannel/components/VoiceChannelBar';
 
 export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, onOpenSettings, onOpenAdmin, onLogout, userProfile, serverId, userRole, userId, dms, unreadDms, selectedDm, onSelectDm }) => {
+  const { isSSO } = useAuth();
   const [showProfileCard, setShowProfileCard] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -149,13 +151,15 @@ export const Sidebar = ({ server, channels, selectedChannel, onSelectChannel, on
           >
             <MdSettings className="text-dark-muted hover:text-dark-text" size={20} />
           </button>
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="p-2 hover:bg-dark-hover rounded transition-colors"
-            title="Logout"
-          >
-            <MdLogout className="text-dark-muted hover:text-red-400" size={20} />
-          </button>
+          {!isSSO && (
+            <button
+              onClick={() => setShowLogoutConfirm(true)}
+              className="p-2 hover:bg-dark-hover rounded transition-colors"
+              title="Logout"
+            >
+              <MdLogout className="text-dark-muted hover:text-red-400" size={20} />
+            </button>
+          )}
         </div>
       </div>
       </div>

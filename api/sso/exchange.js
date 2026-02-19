@@ -66,12 +66,13 @@ export default async function handler(req, res) {
 
     console.log(`[EXCHANGE] Code for ${result.email}, isNewUser: ${result.isNewUser}`);
 
-    // ⚠️ KRİTİK: FIRESTORE'A KULLANICI KAYDI
+    // ✅ FIRESTORE KULLANICI KAYDI - Sadece yeni kullanıcılar için profil oluştur
     const userDocRef = db.collection('users').doc(result.uid);
     const userDoc = await userDocRef.get();
 
-    if (result.isNewUser || !userDoc.exists || !userDoc.data()?.email) {
-      console.log('[EXCHANGE] Creating/repairing Firestore profile...');
+    if (!userDoc.exists) {
+      // ✅ Sadece gerçekten YENİ kullanıcı için profil oluştur
+      console.log('[EXCHANGE] New user - creating Firestore profile...');
       
       // Benzersiz displayName kontrolü
       let uniqueDisplayName = result.displayName;
@@ -89,33 +90,32 @@ export default async function handler(req, res) {
         uniqueDisplayName = `${result.displayName}#${randomSuffix}`;
       }
 
-      // Firestore'a tam profil kaydet
+      // Yeni kullanıcı için tam profil oluştur
       await userDocRef.set({
         displayName: uniqueDisplayName,
         email: result.email,
         photoUrl: result.photoURL,
-        role: userDoc.exists ? (userDoc.data()?.role || 'member') : 'member',
-        createdAt: userDoc.exists ? userDoc.data()?.createdAt : admin.firestore.FieldValue.serverTimestamp(),
+        role: 'member',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         isOnline: true,
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
         isUsernameSet: true,
-        servers: userDoc.exists ? (userDoc.data()?.servers || []) : []
-      }, { merge: true });
+        servers: []
+      });
 
-      console.log('[EXCHANGE] ✅ Firestore profile created:', uniqueDisplayName);
+      console.log('[EXCHANGE] ✅ New user profile created:', uniqueDisplayName);
 
       // Firebase Auth'u güncelle
-      if (result.isNewUser) {
-        await admin.auth().updateUser(result.uid, {
-          displayName: uniqueDisplayName,
-          photoURL: result.photoURL,
-          emailVerified: true
-        });
-        console.log('[EXCHANGE] ✅ Firebase Auth profile updated');
-      }
+      await admin.auth().updateUser(result.uid, {
+        displayName: uniqueDisplayName,
+        photoURL: result.photoURL,
+        emailVerified: true
+      });
+      console.log('[EXCHANGE] ✅ Firebase Auth profile updated');
+
     } else {
-      // Mevcut kullanıcı - sadece presence güncelle
-      console.log('[EXCHANGE] Existing user, updating presence...');
+      // ✅ Mevcut kullanıcı - SADECE presence güncelle, role/servers/displayName'e DOKUNMA
+      console.log('[EXCHANGE] Existing user, updating presence only...');
       await userDocRef.set({
         isOnline: true,
         lastSeen: admin.firestore.FieldValue.serverTimestamp()

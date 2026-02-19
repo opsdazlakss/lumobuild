@@ -10,7 +10,7 @@ import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 
 import { MainApp } from './pages/MainApp';
 import { UsernameSetupScreen } from './components/auth/UsernameSetupScreen';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithCustomToken, signOut } from 'firebase/auth';
 import { auth } from './services/firebase';
 
 function AuthRouter() {
@@ -38,10 +38,21 @@ useEffect(() => {
 
     if (ssoCode) {
       if (currentUser) {
-        // Already logged in, clear param
-        window.history.replaceState({}, document.title, window.location.pathname);
-        setIsSSOProcessing(false);
-        return;
+        // ✅ Farklı hesapla SSO gelmiş olabilir — önce çıkış yap
+        console.log('🔄 SSO code received while logged in. Signing out first...');
+        setIsSSOProcessing(true);
+        try {
+          await signOut(auth);
+          // onAuthStateChanged tetiklenecek, currentUser null olacak
+          // Sonraki render'da SSO kodu URL'de hâlâ duruyor olacak
+          // (henüz temizlemedik) → tekrar bu useEffect çalışacak ve giriş yapacak
+          return;
+        } catch (err) {
+          console.error('SSO re-login signOut failed:', err);
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setIsSSOProcessing(false);
+          return;
+        }
       }
 
       console.log('🔐 SSO Code detected, exchanging...');
@@ -69,6 +80,7 @@ useEffect(() => {
         // Backend (exchange.js) zaten Firestore'u halletti
         await signInWithCustomToken(auth, data.customToken);
         console.log('✅ User signed in successfully');
+        sessionStorage.setItem('loginMethod', 'sso');
         
       } catch (err) {
         console.error('❌ SSO Error:', err);

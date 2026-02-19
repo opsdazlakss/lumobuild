@@ -166,13 +166,24 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      console.log('[Auth] AUTH_CODE_VERSION: 2.0.45-fix1');
+      console.log('[Auth] AUTH_CODE_VERSION: 2.0.46');
       console.log('[Auth] UID:', user.uid, 'Doc exists:', userDoc.exists());
 
-      if (!userDoc.exists()) {
-        // Doküman hiç yok — farklı UID'de eski profil var mı kontrol et
-        console.log('[Auth] No Firestore doc. Checking for profile with same email...');
+      // ✅ Profil TAMAM MI kontrolü — doc'un var olması yetmez, email ve displayName de olmalı
+      // (çünkü usePushNotifications/updatePresence hook'ları sadece fcmTokens/isOnline ile minimal doc oluşturabilir)
+      const docData = userDoc.exists() ? userDoc.data() : null;
+      const hasCompleteProfile = docData && docData.email && docData.displayName;
+
+      if (!hasCompleteProfile) {
+        // Profil yok veya eksik — oluştur/onar
+        console.log('[Auth] Profile incomplete or missing. Creating/repairing...',
+          'docExists:', userDoc.exists(),
+          'hasEmail:', !!docData?.email,
+          'hasDisplayName:', !!docData?.displayName);
         
+        const existingData = docData || {};
+        
+        // Farklı UID'de aynı email ile profil var mı kontrol et (SSO/mobile UID uyumsuzluğu)
         let migratedData = null;
         if (user.email) {
           const usersRef = collection(db, 'users');
@@ -188,10 +199,12 @@ export const AuthProvider = ({ children }) => {
         }
 
         const source = migratedData || {};
-        let uniqueDisplayName = source.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        // DisplayName: mevcut > migrated > Google > random
+        let uniqueDisplayName = existingData.displayName || source.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
         
         // Benzersizlik kontrolü (sadece yeni isim atanacaksa)
-        if (!source.displayName) {
+        if (!existingData.displayName && !source.displayName) {
           const usersRef = collection(db, 'users');
           const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
           const snapshot = await getDocs(q);
@@ -202,26 +215,26 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // ✅ Yeni profil oluştur — migrate edilen role/servers varsa kullan
+        // ✅ Profil oluştur/onar — mevcut doc'taki role/servers KORUNUR
         await setDoc(userDocRef, {
           displayName: uniqueDisplayName,
           email: user.email,
           photoUrl: user.photoURL,
-          role: source.role || 'member',
-          createdAt: source.createdAt || serverTimestamp(),
+          role: existingData.role || source.role || 'member',
+          createdAt: existingData.createdAt || source.createdAt || serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
-          isUsernameSet: source.isUsernameSet !== undefined ? source.isUsernameSet : true,
-          servers: source.servers || []
-        });
+          isUsernameSet: existingData.isUsernameSet !== undefined ? existingData.isUsernameSet : (source.isUsernameSet !== undefined ? source.isUsernameSet : true),
+          servers: existingData.servers || source.servers || []
+        }, { merge: true }); // merge:true → fcmTokens gibi hook-eklenen alanlar korunur
         
-        console.log('[Auth] ✅ New profile created:', uniqueDisplayName);
+        console.log('[Auth] ✅ Profile created/repaired:', uniqueDisplayName);
 
       } else {
-        // ✅ Doküman VAR — SADECE isOnline ve lastSeen güncelle, BAŞKA HİÇBİR ŞEY YAZMA
-        console.log('[Auth] Doc EXISTS with displayName:', userDoc.data()?.displayName, 
-          '| role:', userDoc.data()?.role, 
-          '| servers:', userDoc.data()?.servers?.length,
+        // ✅ Tam profil VAR — SADECE isOnline ve lastSeen güncelle, BAŞKA HİÇBİR ŞEY YAZMA
+        console.log('[Auth] COMPLETE profile found. displayName:', docData.displayName, 
+          '| role:', docData.role, 
+          '| servers:', docData.servers?.length,
           '| Updating ONLY presence.');
         
         await setDoc(userDocRef, {

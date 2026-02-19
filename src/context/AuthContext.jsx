@@ -166,30 +166,22 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      console.log('[Auth] AUTH_CODE_VERSION: 2.0.46');
-      console.log('[Auth] UID:', user.uid, 'Doc exists:', userDoc.exists());
+      console.log('[Auth] AUTH_CODE_VERSION: 2.0.46-fix2');
+      console.log('[Auth] UID:', user.uid, 'Doc exists:', userDoc.exists(), 
+        'email:', userDoc.data()?.email, 'displayName:', userDoc.data()?.displayName);
 
-      // ✅ Profil TAMAM MI kontrolü — doc'un var olması yetmez, email ve displayName de olmalı
-      // (çünkü usePushNotifications/updatePresence hook'ları sadece fcmTokens/isOnline ile minimal doc oluşturabilir)
-      const docData = userDoc.exists() ? userDoc.data() : null;
-      const hasCompleteProfile = docData && docData.email && docData.displayName;
-
-      if (!hasCompleteProfile) {
-        // Profil yok veya eksik — oluştur/onar
-        console.log('[Auth] Profile incomplete or missing. Creating/repairing...',
-          'docExists:', userDoc.exists(),
-          'hasEmail:', !!docData?.email,
-          'hasDisplayName:', !!docData?.displayName);
+      if (!userDoc.exists()) {
+        // ═══════════════════════════════════════════════════════════════
+        // DURUM 1: Doküman hiç yok → Tam profil oluştur
+        // ═══════════════════════════════════════════════════════════════
+        console.log('[Auth] CASE 1: No doc exists. Creating full profile...');
         
-        const existingData = docData || {};
-        
-        // Farklı UID'de aynı email ile profil var mı kontrol et (SSO/mobile UID uyumsuzluğu)
+        // Farklı UID'de aynı email ile profil var mı kontrol et
         let migratedData = null;
         if (user.email) {
           const usersRef = collection(db, 'users');
           const emailQuery = query(usersRef, where('email', '==', user.email));
           const emailSnapshot = await getDocs(emailQuery);
-          
           emailSnapshot.forEach(existingDoc => {
             if (existingDoc.id !== user.uid && existingDoc.data()?.displayName) {
               console.log('[Auth] ⚠️ Found profile under different UID:', existingDoc.id);
@@ -199,12 +191,9 @@ export const AuthProvider = ({ children }) => {
         }
 
         const source = migratedData || {};
+        let uniqueDisplayName = source.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
         
-        // DisplayName: mevcut > migrated > Google > random
-        let uniqueDisplayName = existingData.displayName || source.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
-        
-        // Benzersizlik kontrolü (sadece yeni isim atanacaksa)
-        if (!existingData.displayName && !source.displayName) {
+        if (!source.displayName) {
           const usersRef = collection(db, 'users');
           const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
           const snapshot = await getDocs(q);
@@ -215,27 +204,73 @@ export const AuthProvider = ({ children }) => {
           }
         }
 
-        // ✅ Profil oluştur/onar — mevcut doc'taki role/servers KORUNUR
         await setDoc(userDocRef, {
           displayName: uniqueDisplayName,
           email: user.email,
           photoUrl: user.photoURL,
-          role: existingData.role || source.role || 'member',
-          createdAt: existingData.createdAt || source.createdAt || serverTimestamp(),
+          role: source.role || 'member',
+          createdAt: source.createdAt || serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
-          isUsernameSet: existingData.isUsernameSet !== undefined ? existingData.isUsernameSet : (source.isUsernameSet !== undefined ? source.isUsernameSet : true),
-          servers: existingData.servers || source.servers || []
-        }, { merge: true }); // merge:true → fcmTokens gibi hook-eklenen alanlar korunur
+          isUsernameSet: source.isUsernameSet !== undefined ? source.isUsernameSet : true,
+          servers: source.servers || []
+        });
         
-        console.log('[Auth] ✅ Profile created/repaired:', uniqueDisplayName);
+        console.log('[Auth] ✅ CASE 1 done. New profile created:', uniqueDisplayName);
+
+      } else if (!userDoc.data()?.email || !userDoc.data()?.displayName) {
+        // ═══════════════════════════════════════════════════════════════
+        // DURUM 2: Doküman var ama eksik (hook'ların oluşturduğu minimal doc)
+        // → Sadece EKSİK alanları doldur, mevcut alanlara ASLA dokunma
+        // ═══════════════════════════════════════════════════════════════
+        console.log('[Auth] CASE 2: Doc exists but incomplete. Filling missing fields ONLY...');
+        
+        const updates = {
+          isOnline: true,
+          lastSeen: serverTimestamp()
+        };
+
+        // Her alan için: SADECE yoksa ekle
+        if (!userDoc.data()?.displayName) {
+          let displayName = user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('displayName', '==', displayName));
+          const snapshot = await getDocs(q);
+          let taken = false;
+          snapshot.forEach(d => { if (d.id !== user.uid) taken = true; });
+          if (taken) displayName = `${displayName}#${Math.floor(1000 + Math.random() * 9000)}`;
+          updates.displayName = displayName;
+        }
+        if (!userDoc.data()?.email && user.email) {
+          updates.email = user.email;
+        }
+        if (!userDoc.data()?.photoUrl && user.photoURL) {
+          updates.photoUrl = user.photoURL;
+        }
+        if (!userDoc.data()?.role) {
+          updates.role = 'member';
+        }
+        if (!userDoc.data()?.createdAt) {
+          updates.createdAt = serverTimestamp();
+        }
+        if (userDoc.data()?.isUsernameSet === undefined) {
+          updates.isUsernameSet = true;
+        }
+        if (!userDoc.data()?.servers) {
+          updates.servers = [];
+        }
+
+        await setDoc(userDocRef, updates, { merge: true });
+        console.log('[Auth] ✅ CASE 2 done. Missing fields added:', Object.keys(updates).join(', '));
 
       } else {
-        // ✅ Tam profil VAR — SADECE isOnline ve lastSeen güncelle, BAŞKA HİÇBİR ŞEY YAZMA
-        console.log('[Auth] COMPLETE profile found. displayName:', docData.displayName, 
-          '| role:', docData.role, 
-          '| servers:', docData.servers?.length,
-          '| Updating ONLY presence.');
+        // ═══════════════════════════════════════════════════════════════
+        // DURUM 3: Tam profil var → SADECE isOnline ve lastSeen güncelle
+        // ═══════════════════════════════════════════════════════════════
+        console.log('[Auth] CASE 3: Complete profile. displayName:', userDoc.data()?.displayName, 
+          '| role:', userDoc.data()?.role, 
+          '| servers:', userDoc.data()?.servers?.length,
+          '| Writing ONLY isOnline + lastSeen.');
         
         await setDoc(userDocRef, {
           isOnline: true,

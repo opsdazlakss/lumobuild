@@ -158,50 +158,56 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      if (!userDoc.exists()) {
-        // ✅ Sadece gerçekten YENİ kullanıcı için profil oluştur
-        console.log('[Auth] New user detected. Creating profile...');
-        
-        let uniqueDisplayName = user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
-        
-        // Benzersizlik kontrolü
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
-        const snapshot = await getDocs(q);
-        
-        let taken = false;
-        snapshot.forEach(doc => {
-          if (doc.id !== user.uid) taken = true;
-        });
+      // Profil eksikse oluştur/onar (updatePresence minimal doc oluşturmuş olabilir)
+      const existingData = userDoc.exists() ? userDoc.data() : {};
+      const isProfileIncomplete = !userDoc.exists() || !existingData.email || !existingData.displayName;
 
-        if (taken) {
-          const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
-          uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
+      if (isProfileIncomplete) {
+        console.log('[Auth] Profile missing or incomplete. Creating/repairing...');
+        
+        // Benzersiz displayName (sadece yeni atanacaksa kontrol et)
+        let uniqueDisplayName = existingData.displayName || user.displayName || `User#${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        if (!existingData.displayName) {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('displayName', '==', uniqueDisplayName));
+          const snapshot = await getDocs(q);
+          
+          let taken = false;
+          snapshot.forEach(doc => {
+            if (doc.id !== user.uid) taken = true;
+          });
+
+          if (taken) {
+            const randomSuffix = Math.floor(1000 + Math.random() * 9000); 
+            uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
+          }
         }
 
+        // ✅ Profil oluştur/onar — mevcut role ve servers KORUNUR
         await setDoc(userDocRef, {
           displayName: uniqueDisplayName,
           email: user.email,
           photoUrl: user.photoURL,
-          role: 'member',
-          createdAt: serverTimestamp(),
+          role: existingData.role || 'member',
+          createdAt: existingData.createdAt || serverTimestamp(),
           isOnline: true,
           lastSeen: serverTimestamp(),
-          isUsernameSet: true,
-          servers: []
-        });
+          isUsernameSet: existingData.isUsernameSet !== undefined ? existingData.isUsernameSet : true,
+          servers: existingData.servers || []
+        }, { merge: true });
         
-        console.log('[Auth] ✅ New user profile created:', uniqueDisplayName);
+        console.log('[Auth] ✅ Profile created/repaired:', uniqueDisplayName);
 
       } else {
-        // ✅ Mevcut kullanıcı - SADECE presence güncelle, role/servers/displayName'e DOKUNMA
+        // ✅ Tam profili olan mevcut kullanıcı — sadece presence güncelle
         console.log('[Auth] Existing user login, updating presence only...');
         const updates = {
            isOnline: true,
            lastSeen: serverTimestamp()
         };
         
-        if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
+        if (existingData.isUsernameSet === undefined && existingData.displayName) {
           updates.isUsernameSet = true;
         }
 

@@ -66,56 +66,64 @@ export default async function handler(req, res) {
 
     console.log(`[EXCHANGE] Code for ${result.email}, isNewUser: ${result.isNewUser}`);
 
-    // ✅ FIRESTORE KULLANICI KAYDI - Sadece yeni kullanıcılar için profil oluştur
+    // ✅ FIRESTORE KULLANICI KAYDI
     const userDocRef = db.collection('users').doc(result.uid);
     const userDoc = await userDocRef.get();
 
-    if (!userDoc.exists) {
-      // ✅ Sadece gerçekten YENİ kullanıcı için profil oluştur
-      console.log('[EXCHANGE] New user - creating Firestore profile...');
-      
-      // Benzersiz displayName kontrolü
-      let uniqueDisplayName = result.displayName;
-      const usersSnapshot = await db.collection('users')
-        .where('displayName', '==', result.displayName)
-        .get();
-      
-      let nameTaken = false;
-      usersSnapshot.forEach(doc => {
-        if (doc.id !== result.uid) nameTaken = true;
-      });
+    // Profil eksikse oluştur/onar (updatePresence minimal doc oluşturmuş olabilir)
+    const existingData = userDoc.exists ? userDoc.data() : {};
+    const isProfileIncomplete = !userDoc.exists || !existingData.email || !existingData.displayName;
 
-      if (nameTaken) {
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-        uniqueDisplayName = `${result.displayName}#${randomSuffix}`;
+    if (isProfileIncomplete) {
+      console.log('[EXCHANGE] Profile missing or incomplete, creating/repairing...');
+      
+      // Benzersiz displayName kontrolü (sadece yeni displayName atanacaksa)
+      let uniqueDisplayName = existingData.displayName || result.displayName;
+      
+      if (!existingData.displayName) {
+        const usersSnapshot = await db.collection('users')
+          .where('displayName', '==', uniqueDisplayName)
+          .get();
+        
+        let nameTaken = false;
+        usersSnapshot.forEach(doc => {
+          if (doc.id !== result.uid) nameTaken = true;
+        });
+
+        if (nameTaken) {
+          const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+          uniqueDisplayName = `${uniqueDisplayName}#${randomSuffix}`;
+        }
       }
 
-      // Yeni kullanıcı için tam profil oluştur
+      // ✅ Profil oluştur/onar — mevcut role ve servers KORUNUR
       await userDocRef.set({
         displayName: uniqueDisplayName,
         email: result.email,
         photoUrl: result.photoURL,
-        role: 'member',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        role: existingData.role || 'member',
+        createdAt: existingData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
         isOnline: true,
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-        isUsernameSet: true,
-        servers: []
-      });
+        isUsernameSet: existingData.isUsernameSet !== undefined ? existingData.isUsernameSet : true,
+        servers: existingData.servers || []
+      }, { merge: true });
 
-      console.log('[EXCHANGE] ✅ New user profile created:', uniqueDisplayName);
+      console.log('[EXCHANGE] ✅ Profile created/repaired:', uniqueDisplayName);
 
-      // Firebase Auth'u güncelle
-      await admin.auth().updateUser(result.uid, {
-        displayName: uniqueDisplayName,
-        photoURL: result.photoURL,
-        emailVerified: true
-      });
-      console.log('[EXCHANGE] ✅ Firebase Auth profile updated');
+      // Firebase Auth güncelle (sadece yeni kullanıcılar için)
+      if (!userDoc.exists) {
+        await admin.auth().updateUser(result.uid, {
+          displayName: uniqueDisplayName,
+          photoURL: result.photoURL,
+          emailVerified: true
+        });
+        console.log('[EXCHANGE] ✅ Firebase Auth profile updated');
+      }
 
     } else {
-      // ✅ Mevcut kullanıcı - SADECE presence güncelle, role/servers/displayName'e DOKUNMA
-      console.log('[EXCHANGE] Existing user, updating presence only...');
+      // ✅ Tam profili olan mevcut kullanıcı — sadece presence güncelle
+      console.log('[EXCHANGE] Existing user with complete profile, updating presence only...');
       await userDocRef.set({
         isOnline: true,
         lastSeen: admin.firestore.FieldValue.serverTimestamp()

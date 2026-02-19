@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 import { db } from '../services/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 export const usePushNotifications = () => {
@@ -34,10 +34,17 @@ export const usePushNotifications = () => {
           console.log('Push registration success, token: ' + token.value);
           try {
             const userRef = doc(db, 'users', currentUser.uid);
-            await setDoc(userRef, {
-              fcmTokens: token.value
-            }, { merge: true });
-            console.log('FCM Token saved to Firestore for user:', currentUser.uid);
+            const userDocSnap = await getDoc(userRef);
+            
+            // ✅ Sadece doküman varsa FCM token kaydet — yoksa oluşturma
+            if (userDocSnap.exists()) {
+              await setDoc(userRef, {
+                fcmTokens: token.value
+              }, { merge: true });
+              console.log('FCM Token saved to Firestore for user:', currentUser.uid);
+            } else {
+              console.log('FCM Token NOT saved - user doc does not exist yet for:', currentUser.uid);
+            }
           } catch (err) {
             console.error('Error saving FCM token to Firestore:', err);
           }

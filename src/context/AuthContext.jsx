@@ -145,6 +145,17 @@ export const AuthProvider = ({ children }) => {
         console.log('[AuthContext] Final presence update skipped or failed during logout');
       }
     }
+    
+    // ✅ Mobil platformda Google oturumunu da temizle (hesap seçici tekrar gösterilsin)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await GoogleAuth.signOut();
+        console.log('[AuthContext] Google session cleared');
+      } catch (err) {
+        console.log('[AuthContext] Google signOut skipped:', err.message);
+      }
+    }
+    
     return signOut(auth);
   };
 

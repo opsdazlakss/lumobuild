@@ -166,6 +166,7 @@ export const AuthProvider = ({ children }) => {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
+      console.log('[Auth] AUTH_CODE_VERSION: 2.0.45-fix1');
       console.log('[Auth] UID:', user.uid, 'Doc exists:', userDoc.exists());
 
       if (!userDoc.exists()) {
@@ -217,35 +218,16 @@ export const AuthProvider = ({ children }) => {
         console.log('[Auth] ✅ New profile created:', uniqueDisplayName);
 
       } else {
-        // ✅ Doküman VAR — hiçbir koşulda role/servers/displayName'e DOKUNMA
-        console.log('[Auth] Doc exists. Updating presence only. Current data:', JSON.stringify({
-          displayName: userDoc.data()?.displayName,
-          role: userDoc.data()?.role,
-          servers: userDoc.data()?.servers?.length,
-          email: userDoc.data()?.email
-        }));
+        // ✅ Doküman VAR — SADECE isOnline ve lastSeen güncelle, BAŞKA HİÇBİR ŞEY YAZMA
+        console.log('[Auth] Doc EXISTS with displayName:', userDoc.data()?.displayName, 
+          '| role:', userDoc.data()?.role, 
+          '| servers:', userDoc.data()?.servers?.length,
+          '| Updating ONLY presence.');
         
-        const updates = {
+        await setDoc(userDocRef, {
           isOnline: true,
           lastSeen: serverTimestamp()
-        };
-        
-        // Sadece eksik temel alanları tamamla — ama ASLA üzerine yazma
-        if (!userDoc.data()?.email && user.email) {
-          updates.email = user.email;
-        }
-        if (!userDoc.data()?.displayName && user.displayName) {
-          updates.displayName = user.displayName;
-        }
-        if (!userDoc.data()?.role) {
-          updates.role = 'member';
-        }
-        if (userDoc.data()?.isUsernameSet === undefined && userDoc.data()?.displayName) {
-          updates.isUsernameSet = true;
-        }
-
-        await setDoc(userDocRef, updates, { merge: true });
-        console.log('[Auth] ✅ Presence updated. Fields written:', Object.keys(updates).join(', '));
+        }, { merge: true });
       }
       
       return userCredential;

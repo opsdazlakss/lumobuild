@@ -265,19 +265,12 @@ export const VoiceChannelProvider = ({ children }) => {
     const audioTrack = localStreamRef.current.getAudioTracks()[0];
     if (!audioTrack) return;
 
-    // We need to read the user's hotkeys to know if PTT is configured.
-    // However, we don't have access to hotkeys here directly without importing the hook.
-    // A simpler way: The hotkey listener (MainApp.jsx) will set `isPttActive = true` when held.
-    // Wait, if PTT is NOT configured, how do we know whether to leave mic open?
-    // We should probably check if the user has a PTT bind in localStorage OR pass a prop OR just export `setIsPttActive` and let the external listener handle it?
-    // Actually, if we just export `isPttActive` and let the parent set it... Wait, if they don't have a PTT bind, `isPttActive` will just be false, and they would be permanently muted if we only rely on it.
-    // Let's modify the requirement: we need to know IF they have a PTT bind. 
-    // We can just read localStorage directly for simplicity or move HotkeyContext higher and consume it here.
-    // Let's read localStorage directly here to avoid a huge refactor.
+    // Read voiceMode from localStorage to determine behavior
     const savedHotkeys = localStorage.getItem('user_hotkeys');
     const parsedHotkeys = savedHotkeys ? JSON.parse(savedHotkeys) : {};
-    const hasPttConfigured = parsedHotkeys.voiceMode === 'push_to_talk';
+    const isPttMode = parsedHotkeys.voiceMode === 'push_to_talk';
 
+    // User manually muted -> always disable
     if (isMuted) {
        if (audioTrack.enabled) {
            audioTrack.enabled = false;
@@ -285,27 +278,27 @@ export const VoiceChannelProvider = ({ children }) => {
        return;
     }
 
-    if (hasPttConfigured) {
+    if (isPttMode) {
+        // Push to Talk: audio only when key is held
         if (audioTrack.enabled !== isPttActive) {
             audioTrack.enabled = isPttActive;
-            console.log(`[PTT] Audio ${isPttActive ? 'enabled' : 'disabled'} - PTT state changed`);
+            console.log(`[PTT] Audio ${isPttActive ? 'enabled' : 'disabled'}`);
         }
     } else {
-        // Voice Activity / Default open mic logic
+        // Always Active / Voice Activity mode
         if (vadEnabled) {
             if (isSpeakingLocal !== audioTrack.enabled) {
                 audioTrack.enabled = isSpeakingLocal;
-                console.log(`[VAD] Audio ${audioTrack.enabled ? 'enabled' : 'disabled'} - speaking state changed`);
             }
         } else {
-            // No PTT, No VAD -> Open Mic
+            // Open mic
             if (!audioTrack.enabled) {
                 audioTrack.enabled = true;
             }
         }
     }
 
-  }, [isSpeakingLocal, vadEnabled, isMuted, isPttActive]); // added isPttActive
+  }, [isSpeakingLocal, vadEnabled, isMuted, isPttActive]);
 
   // Handle active audio device change
   const changeAudioDevice = useCallback(async (deviceId) => {
@@ -579,6 +572,19 @@ export const VoiceChannelProvider = ({ children }) => {
       setLocalStream(stream);
       localStreamRef.current = stream;
 
+      // PTT: If in push-to-talk mode, immediately mute the audio track on join
+      // so that the mic starts silent until the user holds the PTT key.
+      const savedHotkeys = localStorage.getItem('user_hotkeys');
+      const parsedHotkeys = savedHotkeys ? JSON.parse(savedHotkeys) : {};
+      if (parsedHotkeys.voiceMode === 'push_to_talk') {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.enabled = false;
+          console.log('[PTT] Mic starts disabled in push-to-talk mode');
+        }
+        setIsPttActive(false);
+      }
+
       // Add participant to Firestore
       const participantRef = doc(
         db, 'servers', currentServer, 'channels', channelId, 'voiceParticipants', currentUser.uid
@@ -626,13 +632,11 @@ export const VoiceChannelProvider = ({ children }) => {
         const now = Date.now();
         const participantsToCheck = latestParticipantsRef.current;
         
-        // Debug log to show the monitor is alive
         if (participantsToCheck.length > 0) {
           console.log(`[VoiceChannel] Ghost Monitor: checking ${participantsToCheck.length} total entries...`);
         }
 
         latestParticipantsRef.current.forEach(participant => {
-          // Don't clean up ourself
           if (participant.odaId === currentUser?.uid) return;
           
           const lastActivity = participant.lastHeartbeat || participant.joinedAt;
@@ -640,24 +644,17 @@ export const VoiceChannelProvider = ({ children }) => {
             ? lastActivity.toMillis() 
             : (lastActivity || 0);
           
-          if (lastActivityTime === 0) {
-            // console.warn('[VoiceChannel] Participant has no activity time:', participant.displayName);
-            return;
-          }
+          if (lastActivityTime === 0) return;
 
           const timeSinceActivity = now - lastActivityTime;
           
-          // If no activity for 20 seconds, they are definitively gone
           if (timeSinceActivity > 20000) {
             console.log('[VoiceChannel] Interval cleanup removing ghost:', participant.displayName, `(${Math.round(timeSinceActivity/1000)}s idle)`);
             const staleParticipantRef = doc(
               db, 'servers', connectedServerIdRef.current, 'channels', currentVoiceChannelRef.current, 'voiceParticipants', participant.odaId
             );
             
-            // Delete from Firestore
             deleteDoc(staleParticipantRef).catch(err => console.error('[VoiceChannel] Failed to delete ghost:', err));
-
-            // Also remove from local state immediately for snappy UI
             setParticipants(prev => prev.filter(p => p.odaId !== participant.odaId));
           }
         });
@@ -667,7 +664,6 @@ export const VoiceChannelProvider = ({ children }) => {
       console.log('[VoiceChannel] Global cleanup interval started');
 
       // LATENCY MONITOR: Check ping every 2 seconds
-      // Using a separate interval for checking network stats
       const monitorNetworkStats = async () => {
         if (!connectionsRef.current.size) {
            setCurrentPing(null);
@@ -677,7 +673,6 @@ export const VoiceChannelProvider = ({ children }) => {
         let totalRtt = 0;
         let count = 0;
 
-        // Use map of promises to wait for all stats
         const statPromises = Array.from(connectionsRef.current.values()).map(async (call) => {
           if (!call.peerConnection) return;
           try {
@@ -685,9 +680,6 @@ export const VoiceChannelProvider = ({ children }) => {
             let pairFound = false;
 
             stats.forEach(report => {
-              // Debug: Log ALL report types to see what we get
-              // if (report.type === 'candidate-pair') console.log('Candidate Pair:', report);
-
               if (report.type === 'candidate-pair' && report.state === 'succeeded') {
                 pairFound = true;
                 
@@ -702,7 +694,6 @@ export const VoiceChannelProvider = ({ children }) => {
             });
             
             if (!pairFound) {
-               // Fallback: search for ANY candidate-pair with RTT
                stats.forEach(report => {
                  if (report.type === 'candidate-pair' && (report.currentRoundTripTime || report.roundTripTime)) {
                     const rttVal = report.currentRoundTripTime || report.roundTripTime;
@@ -725,10 +716,10 @@ export const VoiceChannelProvider = ({ children }) => {
         }
       };
 
-      latencyIntervalRef.current = setInterval(monitorNetworkStats, 2000); // Check every 2s
+      latencyIntervalRef.current = setInterval(monitorNetworkStats, 2000);
 
       setCurrentVoiceChannel(channelId);
-      setConnectedServerId(currentServer); // Set the connected server
+      setConnectedServerId(currentServer);
       setIsMuted(false);
       setIsVideoOn(false);
       setIsScreenSharing(false);

@@ -47,26 +47,12 @@ const GlobalHotkeys = () => {
     const { 
         toggleMute: toggleVoiceMute, 
         toggleDeafen: toggleVoiceDeafen,
-        currentVoiceChannel
+        currentVoiceChannel,
+        setIsPttActive
     } = useVoiceChannel();
     
     useEffect(() => {
         const handleDown = (e) => {
-            // Ignore if input is focused AND no "strong" modifiers (Ctrl/Alt/Meta) are active.
-            // We allow Shift because it's used for typing (e.g. "+"), so we still block if ONLY Shift is present or no modifiers.
-            const isInputFocused = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.contentEditable === 'true';
-            const hasStrongModifier = e.ctrlKey || e.altKey || e.metaKey;
-
-            if (isInputFocused && !hasStrongModifier) {
-                // Debug log to help user understand why it's not working
-                // We limit this to only when a key matches a potential hotkey to avoid spam, 
-                // but since we haven't checked the combo yet, we'll just log if it LOOKS like a hotkey logic pass.
-                // Actually, let's just log it if they press the keys we're interested in? NO, we don't know the combo yet.
-                // We'll calculate combo first, THEN check focus?
-                // Let's restructure slightly to calculate combo first, then decide to abort.
-            }
-            // Move block check later
-
             // Build combo string
             const modifiers = [];
             if (e.ctrlKey) modifiers.push('Control');
@@ -78,16 +64,14 @@ const GlobalHotkeys = () => {
             if (char.length === 1) char = char.toUpperCase();
             
             // Avoid duplicates
-            if (['Control', 'Shift', 'Alt', 'Meta'].includes(char)) {
-                // Just modifier
-            } else {
+            if (!['Control', 'Shift', 'Alt', 'Meta'].includes(char)) {
                 modifiers.push(char);
             }
             
             const combo = [...new Set(modifiers)].join('+');
             const isMuteMatch = combo === hotkeys.toggleMute;
             const isDeafenMatch = combo === hotkeys.toggleDeafen;
-            const isPttMatch = combo === hotkeys.pushToTalk;
+            const isPttMatch = hotkeys.pushToTalk && combo === hotkeys.pushToTalk;
 
             if (isMuteMatch || isDeafenMatch || isPttMatch) {
                 const isInputFocused = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.contentEditable === 'true';
@@ -97,49 +81,31 @@ const GlobalHotkeys = () => {
                     e.preventDefault();
                 }
                 
-                if (isMuteMatch) {
+                if (isPttMatch && hotkeys.voiceMode === 'push_to_talk' && currentVoiceChannel) {
+                    // PTT keydown: activate mic
+                    setIsPttActive(true);
+                } else if (isMuteMatch) {
                     if (currentVoiceChannel) toggleVoiceMute();
                     else toggleCallAudio();
                 } else if (isDeafenMatch) {
                     if (currentVoiceChannel) toggleVoiceDeafen();
                     else toggleCallDeafen();
-                } else if (isPttMatch) {
-                    if (hotkeys.voiceMode === 'push_to_talk') {
-                        if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
-                           useVoiceChannel().setIsPttActive(true);
-                        }
-                    }
                 }
             }
         };
 
         const handleUp = (e) => {
-            // Unconditionally turn off PTT if ANY key is released when PTT is configured,
-            // or we could check if the combo matches. Since PTT relies on holding,
-            // dropping PTT on ANY keyup is a safe fallback to prevent stuck mics.
-            // But checking combo is safer.
-            const modifiers = [];
-            if (e.ctrlKey) modifiers.push('Control');
-            if (e.shiftKey) modifiers.push('Shift');
-            if (e.altKey) modifiers.push('Alt');
-            if (e.metaKey) modifiers.push('Meta');
-            
+            // Only care about PTT key release
+            if (!hotkeys.pushToTalk || hotkeys.voiceMode !== 'push_to_talk' || !currentVoiceChannel) return;
+
+            // Check if the released key is part of the PTT combo
             let char = e.key;
             if (char.length === 1) char = char.toUpperCase();
-            if (!['Control', 'Shift', 'Alt', 'Meta'].includes(char)) modifiers.push(char);
-            
-            const combo = [...new Set(modifiers)].join('+');
-            if (combo === hotkeys.pushToTalk || hotkeys.pushToTalk?.includes(char)) {
-                if (hotkeys.voiceMode === 'push_to_talk') {
-                    if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
-                        useVoiceChannel().setIsPttActive(false);
-                    }
-                }
-            } else {
-               // Fallback: If they release a key and PTT is active, just turn it off to be safe against stuck keys
-               if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
-                    useVoiceChannel().setIsPttActive(false);
-               }
+
+            // If the released key is part of the PTT bind, deactivate
+            const pttParts = hotkeys.pushToTalk.split('+');
+            if (pttParts.includes(char) || pttParts.includes(e.key)) {
+                setIsPttActive(false);
             }
         };
 
@@ -149,7 +115,7 @@ const GlobalHotkeys = () => {
             window.removeEventListener('keydown', handleDown);
             window.removeEventListener('keyup', handleUp);
         };
-    }, [hotkeys, toggleCallAudio, toggleCallDeafen, toggleVoiceMute, toggleVoiceDeafen, currentVoiceChannel]);
+    }, [hotkeys, toggleCallAudio, toggleCallDeafen, toggleVoiceMute, toggleVoiceDeafen, currentVoiceChannel, setIsPttActive]);
 
     return null;
 };

@@ -1189,10 +1189,11 @@ export const VoiceChannelProvider = ({ children }) => {
     toggleDeafen,
     toggleVideo,
     toggleScreenShare,
-    setVadEnabled, // Replaces toggleVAD
+    setVadEnabled,
     joinVoiceChannel,
     leaveVoiceChannel,
-    setUserVolume: (odaId, volume) => { // Kept original setUserVolume implementation
+    setIsPttActive,
+    setUserVolume: (odaId, volume) => {
       setUserVolumes(prev => {
         const newMap = new Map(prev);
         newMap.set(odaId, volume);

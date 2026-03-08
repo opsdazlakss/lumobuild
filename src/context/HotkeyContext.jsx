@@ -17,7 +17,8 @@ export const HotkeyProvider = ({ children }) => {
     const saved = localStorage.getItem('user_hotkeys');
     return saved ? JSON.parse(saved) : {
         toggleMute: '',
-        toggleDeafen: ''
+        toggleDeafen: '',
+        pushToTalk: ''
     };
   });
 
@@ -35,7 +36,8 @@ export const HotkeyProvider = ({ children }) => {
   const resetToDefaults = () => {
       setHotkeys({
           toggleMute: '',
-          toggleDeafen: ''
+          toggleDeafen: '',
+          pushToTalk: ''
       });
   };
 

@@ -56,6 +56,9 @@ export const VoiceChannelProvider = ({ children }) => {
   // Current issue: when audio is disabled, can't detect speaking to re-enable
   const [vadEnabled, setVadEnabled] = useState(false); // Enable/disable VAD feature
   
+  // Push to Talk state
+  const [isPttActive, setIsPttActive] = useState(false);
+  
   // Refs
   const peerRef = useRef(null);
   const myPeerIdRef = useRef(null);
@@ -255,28 +258,54 @@ export const VoiceChannelProvider = ({ children }) => {
     { threshold: 15, interval: 50 } // Check more frequently for VAD (50ms)
   );
 
-  // Apply VAD: disable audio track when not speaking to save bandwidth
+  // Apply Audio State: disable audio track when muted or when PTT is configured but not active
   useEffect(() => {
-    if (!localStreamRef.current || !vadEnabled || isMuted) return;
+    if (!localStreamRef.current) return;
 
     const audioTrack = localStreamRef.current.getAudioTracks()[0];
     if (!audioTrack) return;
 
-    // Enable track when speaking, disable when silent
-    // Note: We keep the track object alive, just toggle enabled state
-    // This is different from mute - mute is user-controlled, VAD is automatic
-    if (isSpeakingLocal) {
-      if (!audioTrack.enabled) {
-        audioTrack.enabled = true;
-        console.log('[VAD] Audio enabled - speaking detected');
-      }
-    } else {
-      if (audioTrack.enabled) {
-        audioTrack.enabled = false;
-        console.log('[VAD] Audio disabled - silence detected');
-      }
+    // We need to read the user's hotkeys to know if PTT is configured.
+    // However, we don't have access to hotkeys here directly without importing the hook.
+    // A simpler way: The hotkey listener (MainApp.jsx) will set `isPttActive = true` when held.
+    // Wait, if PTT is NOT configured, how do we know whether to leave mic open?
+    // We should probably check if the user has a PTT bind in localStorage OR pass a prop OR just export `setIsPttActive` and let the external listener handle it?
+    // Actually, if we just export `isPttActive` and let the parent set it... Wait, if they don't have a PTT bind, `isPttActive` will just be false, and they would be permanently muted if we only rely on it.
+    // Let's modify the requirement: we need to know IF they have a PTT bind. 
+    // We can just read localStorage directly for simplicity or move HotkeyContext higher and consume it here.
+    // Let's read localStorage directly here to avoid a huge refactor.
+    const savedHotkeys = localStorage.getItem('user_hotkeys');
+    const parsedHotkeys = savedHotkeys ? JSON.parse(savedHotkeys) : {};
+    const hasPttConfigured = !!parsedHotkeys.pushToTalk;
+
+    if (isMuted) {
+       if (audioTrack.enabled) {
+           audioTrack.enabled = false;
+       }
+       return;
     }
-  }, [isSpeakingLocal, vadEnabled, isMuted]);
+
+    if (hasPttConfigured) {
+        if (audioTrack.enabled !== isPttActive) {
+            audioTrack.enabled = isPttActive;
+            console.log(`[PTT] Audio ${isPttActive ? 'enabled' : 'disabled'} - PTT state changed`);
+        }
+    } else {
+        // Voice Activity / Default open mic logic
+        if (vadEnabled) {
+            if (isSpeakingLocal !== audioTrack.enabled) {
+                audioTrack.enabled = isSpeakingLocal;
+                console.log(`[VAD] Audio ${audioTrack.enabled ? 'enabled' : 'disabled'} - speaking state changed`);
+            }
+        } else {
+            // No PTT, No VAD -> Open Mic
+            if (!audioTrack.enabled) {
+                audioTrack.enabled = true;
+            }
+        }
+    }
+
+  }, [isSpeakingLocal, vadEnabled, isMuted, isPttActive]); // added isPttActive
 
   // Handle active audio device change
   const changeAudioDevice = useCallback(async (deviceId) => {
@@ -1138,37 +1167,41 @@ export const VoiceChannelProvider = ({ children }) => {
   const value = {
     // State
     currentVoiceChannel,
-    connectedServerId,
     participants,
     localStream,
-    screenStream,
     remoteStreams,
-    voiceChannels,
-    currentPing, // Export ping state
+    screenStream,
+    connectedServerId,
+    userVolumes,
+    currentPing,
+    voiceChannels, // Added back voiceChannels
+    
+    // Devices
+    audioDevices,
+    videoDevices,
+    selectedAudioDeviceId,
+    selectedVideoDeviceId,
+    changeAudioDevice,
+    changeVideoDevice,
+    refreshDevices, // Added back refreshDevices
     
     // Controls
     isMuted,
     isDeafened,
     isVideoOn,
     isScreenSharing,
-    audioDevices,
-    selectedAudioDeviceId,
     vadEnabled,
+    isPttActive, // New
     
     // Actions
-    joinVoiceChannel,
-    leaveVoiceChannel,
     toggleMute,
     toggleDeafen,
     toggleVideo,
     toggleScreenShare,
-    changeAudioDevice,
-    videoDevices,
-    selectedVideoDeviceId,
-    changeVideoDevice,
-    refreshDevices,
-    userVolumes,
-    setUserVolume: (odaId, volume) => {
+    setVadEnabled, // Replaces toggleVAD
+    joinVoiceChannel,
+    leaveVoiceChannel,
+    setUserVolume: (odaId, volume) => { // Kept original setUserVolume implementation
       setUserVolumes(prev => {
         const newMap = new Map(prev);
         newMap.set(odaId, volume);

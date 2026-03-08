@@ -850,6 +850,12 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     currentValue={hotkeys.toggleDeafen}
                     onChange={(val) => updateHotkey('toggleDeafen', val)}
                  />
+                 
+                 <KeybindRecorder 
+                    label="Push to Talk" 
+                    currentValue={hotkeys.pushToTalk}
+                    onChange={(val) => updateHotkey('pushToTalk', val)}
+                 />
 
                  <p className="text-xs text-dark-muted mt-4">
                      Keybinds are active while the application window is focused.

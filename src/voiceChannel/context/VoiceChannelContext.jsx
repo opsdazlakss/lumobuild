@@ -276,7 +276,7 @@ export const VoiceChannelProvider = ({ children }) => {
     // Let's read localStorage directly here to avoid a huge refactor.
     const savedHotkeys = localStorage.getItem('user_hotkeys');
     const parsedHotkeys = savedHotkeys ? JSON.parse(savedHotkeys) : {};
-    const hasPttConfigured = !!parsedHotkeys.pushToTalk;
+    const hasPttConfigured = parsedHotkeys.voiceMode === 'push_to_talk';
 
     if (isMuted) {
        if (audioTrack.enabled) {

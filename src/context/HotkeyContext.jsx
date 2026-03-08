@@ -18,7 +18,8 @@ export const HotkeyProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : {
         toggleMute: '',
         toggleDeafen: '',
-        pushToTalk: ''
+        pushToTalk: '',
+        voiceMode: 'always_active'
     };
   });
 
@@ -37,7 +38,8 @@ export const HotkeyProvider = ({ children }) => {
       setHotkeys({
           toggleMute: '',
           toggleDeafen: '',
-          pushToTalk: ''
+          pushToTalk: '',
+          voiceMode: 'always_active'
       });
   };
 

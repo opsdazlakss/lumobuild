@@ -850,12 +850,51 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     currentValue={hotkeys.toggleDeafen}
                     onChange={(val) => updateHotkey('toggleDeafen', val)}
                  />
-                 
-                 <KeybindRecorder 
-                    label="Push to Talk" 
-                    currentValue={hotkeys.pushToTalk}
-                    onChange={(val) => updateHotkey('pushToTalk', val)}
-                 />
+
+                 <div className="pt-4 border-t border-dark-hover">
+                     <h3 className="text-sm font-semibold text-dark-text mb-3">Voice Input Mode</h3>
+                     <div className="flex flex-col gap-2 mb-4">
+                         <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-dark-hover hover:border-dark-muted transition-colors bg-dark-sidebar">
+                             <input 
+                                 type="radio" 
+                                 name="voiceMode" 
+                                 value="always_active" 
+                                 checked={hotkeys.voiceMode !== 'push_to_talk'}
+                                 onChange={() => updateHotkey('voiceMode', 'always_active')}
+                                 className="w-4 h-4 text-brand-primary bg-dark-input border-dark-hover focus:ring-brand-primary"
+                             />
+                             <div>
+                                 <div className="font-medium text-dark-text">Voice Activity / Always Active</div>
+                                 <div className="text-xs text-dark-muted">Microphone activates automatically when you speak.</div>
+                             </div>
+                         </label>
+                         
+                         <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-dark-hover hover:border-dark-muted transition-colors bg-dark-sidebar">
+                             <input 
+                                 type="radio" 
+                                 name="voiceMode" 
+                                 value="push_to_talk" 
+                                 checked={hotkeys.voiceMode === 'push_to_talk'}
+                                 onChange={() => updateHotkey('voiceMode', 'push_to_talk')}
+                                 className="w-4 h-4 text-brand-primary bg-dark-input border-dark-hover focus:ring-brand-primary"
+                             />
+                             <div>
+                                 <div className="font-medium text-dark-text">Push to Talk</div>
+                                 <div className="text-xs text-dark-muted">Hold down an assigned key to transmit voice.</div>
+                             </div>
+                         </label>
+                     </div>
+
+                     {hotkeys.voiceMode === 'push_to_talk' && (
+                         <div className="pl-2 border-l-2 border-brand-primary">
+                             <KeybindRecorder 
+                                label="Push to Talk Key" 
+                                currentValue={hotkeys.pushToTalk}
+                                onChange={(val) => updateHotkey('pushToTalk', val)}
+                             />
+                         </div>
+                     )}
+                 </div>
 
                  <p className="text-xs text-dark-muted mt-4">
                      Keybinds are active while the application window is focused.

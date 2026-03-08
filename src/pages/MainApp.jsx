@@ -104,8 +104,10 @@ const GlobalHotkeys = () => {
                     if (currentVoiceChannel) toggleVoiceDeafen();
                     else toggleCallDeafen();
                 } else if (isPttMatch) {
-                    if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
-                       useVoiceChannel().setIsPttActive(true);
+                    if (hotkeys.voiceMode === 'push_to_talk') {
+                        if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
+                           useVoiceChannel().setIsPttActive(true);
+                        }
                     }
                 }
             }
@@ -128,8 +130,10 @@ const GlobalHotkeys = () => {
             
             const combo = [...new Set(modifiers)].join('+');
             if (combo === hotkeys.pushToTalk || hotkeys.pushToTalk?.includes(char)) {
-                if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
-                    useVoiceChannel().setIsPttActive(false);
+                if (hotkeys.voiceMode === 'push_to_talk') {
+                    if (currentVoiceChannel && useVoiceChannel().setIsPttActive) {
+                        useVoiceChannel().setIsPttActive(false);
+                    }
                 }
             } else {
                // Fallback: If they release a key and PTT is active, just turn it off to be safe against stuck keys
